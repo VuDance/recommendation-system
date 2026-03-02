@@ -1,66 +1,15 @@
-#!/usr/bin/env python3
-"""
-Precompute product embeddings and store in Milvus vector database
-"""
 import pandas as pd
 import pickle
 import torch
 import numpy as np
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
-from sklearn.preprocessing import LabelEncoder
 from main.product_tower import ProductTower
 import logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# class ProductTower(torch.nn.Module):
-#     """Product Tower for Two-Tower model"""
-#     def __init__(self, brand_vocab_size, text_dim=384, hidden_dim=128, output_dim=64):
-#         super(ProductTower, self).__init__()
-#         self.brand_embedding = torch.nn.Embedding(brand_vocab_size, 16)
-#         self.text_encoder = torch.nn.Linear(text_dim, 64)
-#         self.price_encoder = torch.nn.Linear(1, 16)
-#         self.combined_encoder = torch.nn.Sequential(
-#             torch.nn.Linear(64 + 16 + 16, hidden_dim),
-#             torch.nn.ReLU(),
-#             torch.nn.Linear(hidden_dim, output_dim),
-#             torch.nn.LayerNorm(output_dim)
-#         )
-    
-#     def forward(self, text_features, brand_ids, prices):
-#         # Text features: [batch_size, 384]
-#         text_encoded = self.text_encoder(text_features)
-        
-#         # Brand embeddings: [batch_size, 16]
-#         brand_embedded = self.brand_embedding(brand_ids)
-        
-#         # Price encoding: [batch_size, 16]
-#         price_encoded = self.price_encoder(prices.unsqueeze(-1))
-        
-#         # Combine features
-#         combined = torch.cat([text_encoded, brand_embedded, price_encoded], dim=-1)
-#         output = self.combined_encoder(combined)
-        
-#         # L2 normalize
-#         return torch.nn.functional.normalize(output, p=2, dim=-1)
-
-def load_encoders():
-    """Load saved label encoders"""
-    logger.info("Loading label encoders...")
-    
-    with open('processed_data/product_encoder.pkl', 'rb') as f:
-        product_encoder = pickle.load(f)
-    
-    with open('processed_data/brand_encoder.pkl', 'rb') as f:
-        brand_encoder = pickle.load(f)
-    
-    logger.info(f"Product encoder classes: {len(product_encoder.classes_)}")
-    logger.info(f"Brand encoder classes: {len(brand_encoder.classes_)}")
-    
-    return product_encoder, brand_encoder
 
 def load_product_tower(checkpoint_path):
     """Load pre-trained ProductTower from checkpoint"""
@@ -102,9 +51,6 @@ def compute_product_vectors():
     logger.info("Loading item features...")
     item_df = pd.read_parquet('processed_data/item_features.parquet')
     logger.info(f"Loaded {len(item_df)} products")
-    
-    # Load encoders
-    product_encoder, brand_encoder = load_encoders()
     
     # Load ProductTower
     product_tower = load_product_tower('model/product_tower_checkpoint.pth')

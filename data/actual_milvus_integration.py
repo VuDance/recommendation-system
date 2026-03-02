@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import pandas as pd
 import pickle
 import torch
@@ -6,42 +5,12 @@ from main.product_tower import ProductTower
 import numpy as np
 from pathlib import Path
 import logging
-from main.util.util import connect_to_milvus
+from main.util.util import connect_to_milvus, load_encoders
+from pymilvus import Collection, CollectionSchema, FieldSchema, DataType, utility
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-
-# class ProductTower(torch.nn.Module):
-#     def __init__(self, brand_vocab_size, text_dim=384, hidden_dim=128, output_dim=64):
-#         super(ProductTower, self).__init__()
-#         self.brand_embedding = torch.nn.Embedding(brand_vocab_size, 16)
-#         self.text_encoder = torch.nn.Linear(text_dim, 64)
-#         self.price_encoder = torch.nn.Linear(1, 16)
-#         self.combined_encoder = torch.nn.Sequential(
-#             torch.nn.Linear(64 + 16 + 16, hidden_dim),
-#             torch.nn.ReLU(),
-#             torch.nn.Linear(hidden_dim, output_dim),
-#             torch.nn.LayerNorm(output_dim)
-#         )
-
-#     def forward(self, text_features, brand_ids, prices):
-#         text_encoded    = self.text_encoder(text_features)
-#         brand_embedded  = self.brand_embedding(brand_ids)
-#         price_encoded   = self.price_encoder(prices.unsqueeze(-1))
-#         combined        = torch.cat([text_encoded, brand_embedded, price_encoded], dim=-1)
-#         output          = self.combined_encoder(combined)
-#         return torch.nn.functional.normalize(output, p=2, dim=-1)
-
-
-def load_encoders():
-    logger.info("Loading label encoders...")
-    with open('processed_data/product_encoder.pkl', 'rb') as f:
-        product_encoder = pickle.load(f)
-    with open('processed_data/brand_encoder.pkl', 'rb') as f:
-        brand_encoder = pickle.load(f)
-    return product_encoder, brand_encoder
-
 
 def compute_product_vectors():
     logger.info("=== COMPUTING PRODUCT VECTORS ===")
@@ -49,7 +18,7 @@ def compute_product_vectors():
     item_df = pd.read_parquet('processed_data/item_features.parquet')
     item_df = item_df.reset_index(drop=True)  # ✅ FIX: đảm bảo index liên tục từ 0
 
-    product_encoder, brand_encoder = load_encoders()
+    brand_encoder = load_encoders()
 
     # ✅ FIX: Load text model MỘT LẦN duy nhất, ngoài vòng lặp
     logger.info("Loading SentenceTransformer (once)...")
@@ -116,9 +85,6 @@ def compute_product_vectors():
 
 def create_milvus_collection():
     try:
-        # ✅ FIX: import utility cùng với các class khác
-        from pymilvus import Collection, CollectionSchema, FieldSchema, DataType, utility
-
         collection_name = "product_vectors"
         if utility.has_collection(collection_name):
             utility.drop_collection(collection_name)
