@@ -1,0 +1,6 @@
+# Additional requirements for data processing and PostgreSQL connection
+psycopg2-binary>=2.9.0
+python-dotenv>=1.0.0
+
+# Optional: For better performance with large datasets
+# psycopg2>=2.9.0  # Use this instead of psycopg2-binary for production
