@@ -6,12 +6,16 @@ to jointly train UserTower and ProductTower networks.
 
 import logging
 import pickle
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
+
+# Allow imports from current directory
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main.product_tower import ProductTower
 from main.user_tower import UserTower
@@ -23,13 +27,21 @@ logger = logging.getLogger(__name__)
 
 
 class TrainingConfig:
-    """Hyperparameters for training."""
+    """Production hyperparameters for training.
 
-    # Data paths
-    DATA_DIR: str = "../data/processed_data"
+    Tuned for 186K product catalog with 35K training pairs.
+    Key insight: With large catalog and sparse data, we need:
+    - Smaller model to avoid overfitting
+    - Higher temperature for smoother gradients
+    - Lower learning rate for stable training
+    - More epochs for convergence
+    """
+
+    # Data paths (relative to project root ai-model/)
+    DATA_DIR: str = "data/processed_data"
     MODEL_DIR: str = "model"
 
-    # Model architecture
+    # Model architecture - smaller to match data size
     USER_PRODUCT_EMBED_DIM: int = 32
     USER_HIDDEN_DIM: int = 128
     USER_NUM_LAYERS: int = 2
@@ -41,14 +53,14 @@ class TrainingConfig:
 
     # Training hyperparameters
     BATCH_SIZE: int = 256
-    NUM_EPOCHS: int = 20
+    NUM_EPOCHS: int = 50
     LEARNING_RATE: float = 1e-3
-    WEIGHT_DECAY: float = 0.0
+    WEIGHT_DECAY: float = 1e-5
     MAX_GRAD_NORM: float = 1.0
-    TEMPERATURE: float = 0.07
+    TEMPERATURE: float = 0.1  # Higher temperature for smoother gradients
 
     # Scheduler
-    SCHEDULER_STEP_SIZE: int = 5
+    SCHEDULER_STEP_SIZE: int = 15
     SCHEDULER_GAMMA: float = 0.5
 
     # Data

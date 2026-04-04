@@ -106,7 +106,37 @@ python compute_product_vectors.py   # Standalone vector computation
 python actual_milvus_integration.py # Compute + load into Milvus
 ```
 
-### 6. Serve Recommendations
+### 6. Evaluate the Model
+
+```bash
+cd main
+python evaluate.py
+```
+
+**Options:**
+
+```bash
+# Evaluate on a sample of users for faster results
+python evaluate.py --sample-users 1000
+
+# Custom K values
+python evaluate.py --k-values 5 10 20 50
+
+# Specify device
+python evaluate.py --device cpu
+```
+
+**Metrics computed:**
+
+| Metric | Description |
+|--------|-------------|
+| **Recall@K** | Fraction of user's test items found in top-K |
+| **NDCG@K** | Ranking quality — higher if relevant items appear earlier |
+| **Hit Rate@K** | % of users with at least one relevant item in top-K |
+| **MRR@K** | Mean Reciprocal Rank — how early the first relevant item appears |
+| **Item Coverage** | % of catalog items that get recommended |
+
+### 7. Serve Recommendations
 
 ```bash
 cd main
