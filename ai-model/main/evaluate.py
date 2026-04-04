@@ -9,6 +9,7 @@ Implements standard recommendation system metrics:
 import logging
 import pickle
 import sys
+import os
 from pathlib import Path
 from typing import Any
 
@@ -146,9 +147,9 @@ class ModelEvaluator:
 
         self.user_tower = UserTower(
             product_vocab_size=len(self.product_encoder.classes_),
-            product_embed_dim=32,
-            hidden_dim=128,
-            num_layers=2,
+            product_embed_dim=16,
+            hidden_dim=64,
+            num_layers=1,
             output_dim=64,
         ).to(self.device)
         user_ckpt = torch.load(user_checkpoint, map_location=self.device, weights_only=True)
@@ -157,8 +158,9 @@ class ModelEvaluator:
 
         self.product_tower = ProductTower(
             brand_vocab_size=len(self.brand_encoder.classes_),
-            brand_embed_dim=16,
-            hidden_dim=128,
+            brand_embed_dim=8,
+            price_embed_dim=8,
+            hidden_dim=64,
             output_dim=64,
         ).to(self.device)
         product_ckpt = torch.load(product_checkpoint, map_location=self.device, weights_only=True)
@@ -236,8 +238,14 @@ class ModelEvaluator:
         try:
             from pymilvus import Collection, connections, utility
 
-            collection_name = "product_embeddings"
-            connections.connect(host="localhost", port="19530")
+            collection_name = "product_vectors"
+            connections.connect(
+                alias="default",
+                host=os.getenv("MILVUS_HOST", "localhost"),
+                port=os.getenv("MILVUS_PORT", "19530"),
+                user=os.getenv("MILVUS_USER", "root"),
+                password=os.getenv("MILVUS_PASSWORD", "Milvus"),
+            )
 
             if not utility.has_collection(collection_name):
                 logger.warning("Milvus collection '%s' not found, falling back to brute-force", collection_name)

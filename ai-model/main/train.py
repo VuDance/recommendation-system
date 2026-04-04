@@ -29,44 +29,42 @@ logger = logging.getLogger(__name__)
 class TrainingConfig:
     """Production hyperparameters for training.
 
-    Tuned for 186K product catalog with 35K training pairs.
-    Key insight: With large catalog and sparse data, we need:
-    - Smaller model to avoid overfitting
-    - Higher temperature for smoother gradients
-    - Lower learning rate for stable training
-    - More epochs for convergence
+    Tuned for 186K product catalog with ~13K training pairs.
+    Key insight: dataset is very sparse (13K pairs / 186K products),
+    so we need a much smaller model to avoid overfitting, a smaller
+    batch size for more gradient updates per epoch, lower temperature
+    now that the model is simpler, and more epochs to converge fully.
     """
 
     # Data paths (relative to project root ai-model/)
     DATA_DIR: str = "data/processed_data"
     MODEL_DIR: str = "model"
 
-    # Model architecture - smaller to match data size
-    USER_PRODUCT_EMBED_DIM: int = 32
-    USER_HIDDEN_DIM: int = 128
-    USER_NUM_LAYERS: int = 2
+    # Model architecture — scaled down to match ~13K training samples.
+    # Previous config had 6.1M params for 13K samples (severe overfit).
+    # New config targets ~800K params, a healthier ratio for this dataset.
+    USER_PRODUCT_EMBED_DIM: int = 16   # từ 32
+    USER_HIDDEN_DIM: int = 64          # từ 128
+    USER_NUM_LAYERS: int = 1           # từ 2 — less regularization needed with small model
     PRODUCT_TEXT_DIM: int = 384
-    PRODUCT_BRAND_EMBED_DIM: int = 16
-    PRODUCT_PRICE_EMBED_DIM: int = 16
-    PRODUCT_HIDDEN_DIM: int = 128
-    OUTPUT_DIM: int = 64
+    PRODUCT_BRAND_EMBED_DIM: int = 8   # từ 16
+    PRODUCT_PRICE_EMBED_DIM: int = 8   # từ 16
+    PRODUCT_HIDDEN_DIM: int = 64       # từ 128
+    OUTPUT_DIM: int = 64               # Must match Milvus VECTOR_DIM (64)
 
     # Training hyperparameters
-    BATCH_SIZE: int = 256
-    NUM_EPOCHS: int = 50
+    BATCH_SIZE: int = 128              # từ 256 — smaller batch = more updates/epoch (~107 vs ~53)
+    NUM_EPOCHS: int = 100              # từ 50 — loss was still decreasing at epoch 50
     LEARNING_RATE: float = 1e-3
     WEIGHT_DECAY: float = 1e-5
     MAX_GRAD_NORM: float = 1.0
 
-    # FIX: Increased temperature from 0.1 → 0.3.
-    # With only ~35K training pairs and 186K products, temperature=0.1 is too
-    # aggressive: the loss is dominated by hard negatives before the model has
-    # learned a meaningful embedding space, causing unstable/poor training.
-    # 0.3–0.5 gives smoother gradients and better convergence on sparse data.
-    TEMPERATURE: float = 0.3
+    # Temperature: lower now that batch size is smaller (128 negatives).
+    # With a well-sized model, 0.1 gives sharper gradients and faster convergence.
+    TEMPERATURE: float = 0.1           # từ 0.3
 
-    # Scheduler
-    SCHEDULER_STEP_SIZE: int = 15
+    # Scheduler — decay slower so LR stays high longer
+    SCHEDULER_STEP_SIZE: int = 30      # từ 15
     SCHEDULER_GAMMA: float = 0.5
 
     # Data
