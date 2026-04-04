@@ -57,7 +57,13 @@ class TrainingConfig:
     LEARNING_RATE: float = 1e-3
     WEIGHT_DECAY: float = 1e-5
     MAX_GRAD_NORM: float = 1.0
-    TEMPERATURE: float = 0.1  # Higher temperature for smoother gradients
+
+    # FIX: Increased temperature from 0.1 → 0.3.
+    # With only ~35K training pairs and 186K products, temperature=0.1 is too
+    # aggressive: the loss is dominated by hard negatives before the model has
+    # learned a meaningful embedding space, causing unstable/poor training.
+    # 0.3–0.5 gives smoother gradients and better convergence on sparse data.
+    TEMPERATURE: float = 0.3
 
     # Scheduler
     SCHEDULER_STEP_SIZE: int = 15
@@ -94,10 +100,11 @@ class TwoTowerDataset(Dataset):
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         row = self.pairs.iloc[idx]
 
-        # User history
+        # User history — store as variable-length (no padding here; collate_fn handles it)
         history = torch.tensor(row["context_history"], dtype=torch.long)
 
         # Target item features
+        # item_df is sorted by product_id, so iloc[item_idx] == product_id row
         item_idx = int(row["target_item_id"])
         item_row = self.item_df.iloc[item_idx]
 
@@ -114,14 +121,29 @@ class TwoTowerDataset(Dataset):
 
 
 def collate_fn(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
-    """Pad histories to the same length within a batch."""
+    """Pad histories to the same length within a batch and record true lengths.
+
+    FIX: Previously `lengths` were never computed or passed downstream, so
+    UserTower.forward() processed padding tokens through the GRU, polluting
+    the hidden state. Now we compute the real sequence length for each sample
+    (number of non-zero tokens) and include it in the batch so the training
+    loop can pass it to UserTower for pack_padded_sequence.
+    """
     histories = [item["history"] for item in batch]
+
+    # Compute true lengths (non-padding tokens) before padding
+    lengths = torch.tensor(
+        [max(1, int((h != 0).sum().item())) for h in histories],
+        dtype=torch.long,
+    )
+
     histories_padded = torch.nn.utils.rnn.pad_sequence(
         histories, batch_first=True, padding_value=0
     )
 
     return {
         "history": histories_padded,
+        "lengths": lengths,
         "text_emb": torch.stack([item["text_emb"] for item in batch]),
         "brand_id": torch.stack([item["brand_id"] for item in batch]),
         "price": torch.stack([item["price"] for item in batch]),
@@ -280,12 +302,14 @@ def train(data_dir: str | None = None, model_dir: str | None = None) -> None:
 
         for batch in dataloader:
             history = batch["history"].to(device)
+            lengths = batch["lengths"]           # keep on CPU for pack_padded_sequence
             text_emb = batch["text_emb"].to(device)
             brand_id = batch["brand_id"].to(device)
             price = batch["price"].to(device)
 
-            # Forward pass
-            user_vec = user_tower(history)
+            # FIX: Pass `lengths` so UserTower uses pack_padded_sequence
+            # and ignores padding tokens in the GRU computation.
+            user_vec = user_tower(history, lengths=lengths)
             product_vec = product_tower(text_emb, brand_id, price)
 
             # Compute loss

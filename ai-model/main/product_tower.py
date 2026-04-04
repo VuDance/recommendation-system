@@ -36,12 +36,16 @@ class ProductTower(torch.nn.Module):
 
         combined_input_dim = 64 + brand_embed_dim + price_embed_dim
 
+        # FIX: Removed LayerNorm from the end of combined_encoder.
+        # The original code applied LayerNorm then immediately L2-normalized
+        # the output in forward(), making LayerNorm redundant and wasting
+        # learnable parameters. L2 normalization in forward() is sufficient
+        # and correct for contrastive / dot-product similarity.
         self.combined_encoder = torch.nn.Sequential(
             torch.nn.Linear(combined_input_dim, hidden_dim),
             torch.nn.ReLU(),
             torch.nn.Dropout(0.1),
             torch.nn.Linear(hidden_dim, output_dim),
-            torch.nn.LayerNorm(output_dim),
         )
 
     def forward(

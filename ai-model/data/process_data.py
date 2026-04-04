@@ -162,13 +162,18 @@ def encode_item_features(
 ) -> pd.DataFrame:
     """Apply label encoders to item features.
 
+    FIX: Sort by product_id so that row index == product_id.
+    This is critical for evaluate.py where ranked row indices are compared
+    directly against product_id values in test_items.
+
     Args:
         item_features: Cleaned item features DataFrame.
         product_encoder: Fitted product LabelEncoder.
         brand_encoder: Fitted brand LabelEncoder.
 
     Returns:
-        DataFrame with columns: product_id, title, description, brand_id.
+        DataFrame with columns: product_id, title, description, brand_id,
+        sorted by product_id so row index == product_id.
     """
     logger.info("Encoding item features...")
     encoded = item_features.copy()
@@ -176,6 +181,13 @@ def encode_item_features(
     encoded["brand_id"] = brand_encoder.transform(encoded["brand"])
 
     result = encoded[["product_id", "title", "description", "brand_id"]]
+
+    # FIX: Sort by product_id and reset index so that
+    # item_features.iloc[i] always corresponds to product_id == i.
+    # Without this, ranked_indices from argsort (row positions) would NOT
+    # match product_id values in test_items, causing near-zero metrics.
+    result = result.sort_values("product_id").reset_index(drop=True)
+
     logger.info("Final item features shape: %s", result.shape)
     return result
 
@@ -222,21 +234,37 @@ def encode_user_features(
 def create_training_pairs(
     user_features: pd.DataFrame,
     max_context_length: int = 50,
-) -> pd.DataFrame:
-    """Generate (user, target_item, context_history) training triplets.
+    test_ratio: float = 0.2,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Generate (user, target_item, context_history) training triplets
+    with a proper temporal train/test split.
 
-    For each user with >= 3 interactions, creates one training sample per
-    item after the second, using all preceding items as context.
+    FIX: Previously all interactions were used to generate training pairs,
+    meaning items in the test set were also seen during training (data leakage).
+    Now the last `test_ratio` of each user's history is held out as test items
+    and EXCLUDED from training pair generation.
+
+    For each user:
+      - train window: first 80% of interactions
+      - test items:   last 20% of interactions (saved separately)
+
+    Training pairs are generated only from the train window using
+    leave-one-out over positions [2 .. train_end-1], so the model never
+    sees test items during training.
 
     Args:
         user_features: Encoded user features with history_padded column.
         max_context_length: Maximum length to pad the context history.
+        test_ratio: Fraction of each user's history reserved for testing.
 
     Returns:
-        DataFrame with columns: user_id, target_item_id, context_history.
+        Tuple of (train_pairs_df, test_pairs_df).
+        train_pairs_df columns: user_id, target_item_id, context_history.
+        test_pairs_df  columns: user_id, train_history, test_items.
     """
-    logger.info("Creating training pairs...")
+    logger.info("Creating training pairs with train/test split (test_ratio=%.2f)...", test_ratio)
     training_pairs: list[dict[str, Any]] = []
+    test_pairs: list[dict[str, Any]] = []
 
     for _, user_row in user_features.iterrows():
         user_id = user_row["reviewerID"]
@@ -248,23 +276,43 @@ def create_training_pairs(
         if len(actual_history) < 3:
             continue
 
-        for i in range(2, len(actual_history)):
-            target_item = actual_history[i]
-            context_history = list(actual_history[:i])
+        # Temporal split: train on first 80%, test on last 20%
+        split_idx = max(2, int(len(actual_history) * (1.0 - test_ratio)))
+        train_history = actual_history[:split_idx]
+        test_items = actual_history[split_idx:]
+
+        if not test_items:
+            continue
+
+        # Save test entry for evaluation
+        test_pairs.append({
+            "user_id": user_id,
+            "train_history": train_history,
+            "test_items": test_items,
+        })
+
+        # Generate leave-one-out training pairs from the train window only
+        for i in range(2, len(train_history)):
+            target_item = train_history[i]
+            context = list(train_history[:i])
 
             # Pad context to fixed length
-            if len(context_history) < max_context_length:
-                context_history += [0] * (max_context_length - len(context_history))
+            if len(context) < max_context_length:
+                context += [0] * (max_context_length - len(context))
+            else:
+                context = context[-max_context_length:]
 
             training_pairs.append({
                 "user_id": user_id,
                 "target_item_id": target_item,
-                "context_history": context_history,
+                "context_history": context,
             })
 
     training_df = pd.DataFrame(training_pairs)
+    test_df = pd.DataFrame(test_pairs)
     logger.info("Created %d training pairs.", len(training_df))
-    return training_df
+    logger.info("Created %d test users.", len(test_df))
+    return training_df, test_df
 
 
 # ── Save ─────────────────────────────────────────────────
@@ -274,6 +322,7 @@ def save_data(
     item_features: pd.DataFrame,
     user_features: pd.DataFrame,
     training_pairs: pd.DataFrame,
+    test_pairs: pd.DataFrame,
     product_encoder: LabelEncoder,
     brand_encoder: LabelEncoder,
     output_dir: str | Path,
@@ -284,6 +333,7 @@ def save_data(
         item_features: Encoded item features.
         user_features: Encoded user features.
         training_pairs: Training triplets.
+        test_pairs: Test split with (train_history, test_items) per user.
         product_encoder: Fitted product encoder.
         brand_encoder: Fitted brand encoder.
         output_dir: Directory to save files.
@@ -294,6 +344,7 @@ def save_data(
     item_features.to_parquet(output_path / "item_features.parquet", index=False)
     user_features.to_parquet(output_path / "user_features.parquet", index=False)
     training_pairs.to_parquet(output_path / "train_pairs.parquet", index=False)
+    test_pairs.to_parquet(output_path / "test_pairs.parquet", index=False)
 
     with open(output_path / "product_encoder.pkl", "wb") as f:
         pickle.dump(product_encoder, f)
@@ -328,11 +379,11 @@ def main() -> None:
     encoded_items = encode_item_features(item_features, product_encoder, brand_encoder)
     encoded_users = encode_user_features(user_features, product_encoder)
 
-    # Create training pairs
-    training_pairs = create_training_pairs(encoded_users)
+    # Create training pairs with proper train/test split
+    training_pairs, test_pairs = create_training_pairs(encoded_users)
 
     # Save all data
-    save_data(encoded_items, encoded_users, training_pairs,
+    save_data(encoded_items, encoded_users, training_pairs, test_pairs,
               product_encoder, brand_encoder, output_dir)
 
     # Print summary
@@ -340,6 +391,7 @@ def main() -> None:
     print(f"Items processed: {len(encoded_items)}")
     print(f"Users processed: {len(encoded_users)}")
     print(f"Training pairs created: {len(training_pairs)}")
+    print(f"Test users created: {len(test_pairs)}")
     print(f"Unique products: {len(product_encoder.classes_)}")
     print(f"Unique brands: {len(brand_encoder.classes_)}")
     print(f"Output directory: {output_dir}")

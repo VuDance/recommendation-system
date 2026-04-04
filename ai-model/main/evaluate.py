@@ -104,7 +104,19 @@ class ModelEvaluator:
             self.brand_encoder = pickle.load(f)
 
         self.item_features = pd.read_parquet(self.data_path / "item_features.parquet")
-        self.user_features = pd.read_parquet(self.data_path / "user_features.parquet")
+
+        # FIX: Load the dedicated test_pairs.parquet produced by process_data.py.
+        # Previously evaluate.py re-split user_features on the fly, but since
+        # train_pairs were also built from the full history (no split), the model
+        # had already seen every test item during training — pure data leakage.
+        # Now process_data.py performs the split once, and we consume it here.
+        test_pairs_path = self.data_path / "test_pairs.parquet"
+        if not test_pairs_path.exists():
+            raise FileNotFoundError(
+                "test_pairs.parquet not found. "
+                "Re-run process_data.py to regenerate with the train/test split fix."
+            )
+        self.test_pairs = pd.read_parquet(test_pairs_path)
 
         # Build product index mapping
         self.product_to_idx = {
@@ -114,7 +126,11 @@ class ModelEvaluator:
             i: p for p, i in self.product_to_idx.items()
         }
 
-        logger.info("Loaded %d products, %d users.", len(self.product_encoder.classes_), len(self.user_features))
+        logger.info(
+            "Loaded %d products, %d test users.",
+            len(self.product_encoder.classes_),
+            len(self.test_pairs),
+        )
 
     def _load_models(self) -> None:
         """Load trained UserTower and ProductTower."""
@@ -152,31 +168,37 @@ class ModelEvaluator:
         logger.info("Models loaded on %s.", self.device)
 
     def _get_user_vector(self, user_history: list[int]) -> np.ndarray:
-        """Compute user embedding from their interaction history."""
+        """Compute user embedding from their interaction history.
+
+        FIX: Also pass the true sequence length so UserTower uses
+        pack_padded_sequence and ignores padding tokens in the GRU.
+        """
         history_tensor = torch.tensor(user_history, dtype=torch.long).unsqueeze(0)
+        # Compute true length (non-zero tokens)
+        length = torch.tensor([max(1, sum(1 for x in user_history if x != 0))], dtype=torch.long)
         with torch.no_grad():
-            user_vec = self.user_tower(history_tensor.to(self.device))
+            user_vec = self.user_tower(history_tensor.to(self.device), lengths=length)
         return user_vec.cpu().numpy().flatten()
 
     def _get_all_product_vectors(self) -> np.ndarray:
         """Precompute all product vectors for efficient scoring.
-        
+
         Uses cached text embeddings if available, otherwise computes them once.
         """
         # Check for cached product vectors
         vectors_path = self.data_path / "product_vectors.npy"
-        
+
         if vectors_path.exists():
             logger.info("Loading cached product vectors...")
             vectors = np.load(vectors_path)
             logger.info("Loaded cached vectors with shape: %s", vectors.shape)
             return vectors
-        
+
         # No cache - compute once
         logger.info("Computing all product vectors (this may take a while)...")
         from sentence_transformers import SentenceTransformer
         text_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-        
+
         all_vectors = []
         batch_size = 512
 
@@ -206,40 +228,30 @@ class ModelEvaluator:
 
     def _search_with_milvus(
         self, user_vector: np.ndarray, k: int = 50
-    ) -> list[str]:
+    ) -> list[int]:
         """Search for top-K similar products using Milvus ANN.
-        
-        Args:
-            user_vector: User embedding of shape (dim,).
-            k: Number of results to return.
-            
-        Returns:
-            List of product IDs ranked by similarity.
+
+        Returns product_id integers (not ASIN strings).
         """
-        from pymilvus import Collection, connections, utility
-        
-        collection_name = "product_vectors"
-        
         try:
-            # Connect to Milvus
-            connections.connect(
-                host="localhost",
-                port="19530",
-            )
-            
+            from pymilvus import Collection, connections, utility
+
+            collection_name = "product_embeddings"
+            connections.connect(host="localhost", port="19530")
+
             if not utility.has_collection(collection_name):
                 logger.warning("Milvus collection '%s' not found, falling back to brute-force", collection_name)
                 return self._brute_force_search(user_vector, k)
-            
+
             collection = Collection(collection_name)
             collection.load()
-            
+
             # Search with inner product similarity
             search_params = {
                 "metric_type": "IP",  # Inner Product
                 "params": {"nprobe": 16},
             }
-            
+
             results = collection.search(
                 data=[user_vector.tolist()],
                 anns_field="vector",
@@ -247,29 +259,39 @@ class ModelEvaluator:
                 limit=k,
                 output_fields=["product_id"],
             )
-            
-            # Extract product IDs
+
+            # Extract product_id integers
             product_ids = []
             for hits in results:
                 for hit in hits:
-                    product_ids.append(str(hit.entity.get("product_id")))
-            
+                    product_ids.append(int(hit.entity.get("product_id")))
+
             return product_ids
-            
+
         except Exception as exc:
             logger.warning("Milvus search failed (%s), falling back to brute-force", exc)
             return self._brute_force_search(user_vector, k)
 
     def _brute_force_search(
-        self, user_vector: np.ndarray, k: int
-    ) -> list[str]:
-        """Fallback brute-force search when Milvus is unavailable."""
-        product_vectors = self._get_all_product_vectors()
+        self, user_vector: np.ndarray, k: int, product_vectors: np.ndarray | None = None
+    ) -> list[int]:
+        """Brute-force search returning product_id integers.
+
+        FIX: Previously returned row indices from item_features, which were
+        compared directly against product_id values in test_items. These two
+        spaces only agree if item_features is sorted by product_id (now
+        guaranteed by process_data.py). We also explicitly return product_id
+        values from the DataFrame so the comparison is unambiguous regardless.
+        """
+        if product_vectors is None:
+            product_vectors = self._get_all_product_vectors()
         scores = product_vectors @ user_vector
-        ranked_indices = np.argsort(-scores)[:k]
+        ranked_row_indices = np.argsort(-scores)[:k]
+        # item_features is sorted by product_id, so row index == product_id,
+        # but we explicitly fetch to be safe.
         return [
-            str(self.item_features.iloc[idx]["product_id"])
-            for idx in ranked_indices
+            int(self.item_features.iloc[idx]["product_id"])
+            for idx in ranked_row_indices
         ]
 
     def evaluate(
@@ -279,6 +301,10 @@ class ModelEvaluator:
         use_milvus: bool = False,
     ) -> dict[str, Any]:
         """Run full evaluation and return metrics.
+
+        FIX: Uses test_pairs (pre-split by process_data.py) instead of
+        re-splitting user_features here. This eliminates the data leakage
+        where the model was evaluated on items it had already been trained on.
 
         Args:
             k_values: List of K values for @K metrics.
@@ -294,20 +320,17 @@ class ModelEvaluator:
         logger.info("Search method: %s", "Milvus ANN" if use_milvus else "Brute-force")
 
         # Precompute product vectors (only needed for brute-force)
+        product_vectors: np.ndarray | None = None
         if not use_milvus:
             product_vectors = self._get_all_product_vectors()
-        else:
-            product_vectors = None
 
-        # Prepare test users
-        test_users = self.user_features.copy()
+        # Prepare test users from the dedicated test split
+        test_users = self.test_pairs.copy()
         if sample_users:
             test_users = test_users.sample(n=min(sample_users, len(test_users)), random_state=42)
 
         # Metrics accumulators
-        metrics: dict[str, list[float]] = {
-            f"recall@{k}": [] for k in k_values
-        }
+        metrics: dict[str, list[float]] = {f"recall@{k}": [] for k in k_values}
         metrics.update({f"ndcg@{k}": [] for k in k_values})
         metrics.update({f"hit_rate@{k}": [] for k in k_values})
         metrics.update({f"mrr@{k}": [] for k in k_values})
@@ -316,43 +339,35 @@ class ModelEvaluator:
         max_k_needed = max(k_values)
 
         for _, user_row in tqdm(test_users.iterrows(), total=len(test_users), desc="Evaluating users"):
-            history = user_row["history_padded"]
+            # FIX: Use pre-computed train_history and test_items from test_pairs.
+            # Old code re-derived these from history_padded at eval time while
+            # the training pairs had already consumed the full history.
+            train_history = [int(p) for p in user_row["train_history"] if p != 0]
+            test_items = [int(p) for p in user_row["test_items"]]
 
-            # Remove padding
-            actual_history = [int(p) for p in history if p != 0]
-
-            if len(actual_history) < 3:
+            if len(train_history) < 2 or not test_items:
                 continue
 
-            # Use last 20% of history as test set
-            split_idx = int(len(actual_history) * 0.8)
-            train_history = actual_history[:split_idx]
-            test_items = actual_history[split_idx:]
-
-            if not test_items:
-                continue
-
-            # Get user vector
+            # Get user vector using only the training portion of history
             user_vector = self._get_user_vector(train_history)
 
-            # Search for recommendations - return INDICES not product IDs
+            # Search for recommendations — returns product_id integers
             if use_milvus:
-                ranked_indices = self._search_with_milvus(user_vector, k=max_k_needed)
+                ranked_product_ids = self._search_with_milvus(user_vector, k=max_k_needed)
             else:
-                # Brute-force: score all products, return indices
-                scores = product_vectors @ user_vector
-                ranked_indices = np.argsort(-scores)[:max_k_needed]
+                ranked_product_ids = self._brute_force_search(
+                    user_vector, k=max_k_needed, product_vectors=product_vectors
+                )
 
-            # Track recommended items for coverage (indices)
-            if hasattr(ranked_indices, "__iter__"):
-                recommended_items_all.update(list(ranked_indices)[:20])
+            # Track recommended items for coverage
+            recommended_items_all.update(ranked_product_ids[:20])
 
-            # Compute metrics - compare indices to indices
+            # Compute metrics — both sides are product_id integers now
             for k in k_values:
-                metrics[f"recall@{k}"].append(recall_at_k(list(ranked_indices), test_items, k))
-                metrics[f"ndcg@{k}"].append(ndcg_at_k(list(ranked_indices), test_items, k))
-                metrics[f"hit_rate@{k}"].append(hit_rate_at_k(list(ranked_indices), test_items, k))
-                metrics[f"mrr@{k}"].append(mrr_at_k(list(ranked_indices), test_items, k))
+                metrics[f"recall@{k}"].append(recall_at_k(ranked_product_ids, test_items, k))
+                metrics[f"ndcg@{k}"].append(ndcg_at_k(ranked_product_ids, test_items, k))
+                metrics[f"hit_rate@{k}"].append(hit_rate_at_k(ranked_product_ids, test_items, k))
+                metrics[f"mrr@{k}"].append(mrr_at_k(ranked_product_ids, test_items, k))
 
         # Aggregate results
         results: dict[str, Any] = {}
