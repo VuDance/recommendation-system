@@ -1,50 +1,128 @@
+"""Stream processor for Amazon product metadata into PostgreSQL.
+
+Reads gzipped JSONL files (e.g., meta_AMAZON_FASHION.json.gz),
+extracts product fields, and bulk-inserts them into a PostgreSQL
+table with progress tracking and error handling.
+"""
+
 import gzip
 import json
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Optional
+
 import psycopg2
 from psycopg2.extras import execute_values
-from database_config import DatabaseConfig
 
-# Set up logging
+from data.database_config import DatabaseConfig
+
+# ── Logging Configuration ─────────────────────────────────
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler('stream_meta_to_postgres.log'),
-        logging.StreamHandler()
-    ]
+        logging.FileHandler("stream_meta_to_postgres.log"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 
+# ── Product Data Extraction ──────────────────────────────
+
+DESCRIPTION_FIELDS = (
+    "description",
+    "feature",
+    "details",
+    "product_description",
+)
+
+
+def extract_product_data(json_line: str) -> Optional[dict[str, Any]]:
+    """Extract product metadata from a single JSON line.
+
+    Args:
+        json_line: A single JSONL line from the meta file.
+
+    Returns:
+        Dict with ASIN, title, brand, image_url, description;
+        or None if parsing fails or ASIN is missing.
+    """
+    try:
+        data = json.loads(json_line.strip())
+    except json.JSONDecodeError as exc:
+        logger.warning("Failed to parse JSON line: %s", exc)
+        return None
+
+    asin = data.get("asin")
+    if not asin:
+        return None
+
+    return {
+        "asin": asin,
+        "title": data.get("title", ""),
+        "brand": data.get("brand", ""),
+        "image_url": data.get("imageURL", ""),
+        "description": _extract_description(data),
+    }
+
+
+def _extract_description(data: dict[str, Any]) -> str:
+    """Extract a description string from various possible fields."""
+    for field in DESCRIPTION_FIELDS:
+        if field in data:
+            value = data[field]
+            if isinstance(value, list):
+                return " ".join(str(item) for item in value if item)
+            if isinstance(value, str):
+                return value
+            if value:
+                return str(value)
+
+    # Fall back to title if it's unusually long (may contain description)
+    title = data.get("title", "")
+    if len(title) > 200:
+        return title
+
+    return ""
+
+
+# ── Streamer Class ───────────────────────────────────────
+
+
 class MetaDataStreamer:
-    """Stream processor for meta_AMAZON_FASHION.json.gz data"""
-    
-    def __init__(self, db_config: DatabaseConfig):
+    """Streams product metadata from a gzipped JSONL file into PostgreSQL.
+
+    Args:
+        db_config: DatabaseConfig instance with connection settings.
+    """
+
+    def __init__(self, db_config: DatabaseConfig) -> None:
         self.db_config = db_config
-        self.connection = None
-        self.cursor = None
+        self.connection: psycopg2.extensions.connection | None = None
+        self.cursor: psycopg2.extensions.cursor | None = None
         self.total_processed = 0
         self.total_inserted = 0
         self.total_skipped = 0
         self.batch_size = db_config.BATCH_SIZE
-        
-    def connect_to_database(self):
-        """Establish database connection"""
+
+    # ── Database Management ──────────────────────────────
+
+    def connect_to_database(self) -> bool:
+        """Establish a PostgreSQL connection."""
         try:
             self.connection = psycopg2.connect(**self.db_config.get_connection_params())
             self.cursor = self.connection.cursor()
-            logger.info("Connected to PostgreSQL database successfully")
+            logger.info("Connected to PostgreSQL database.")
             return True
-        except Exception as e:
-            logger.error(f"Failed to connect to database: {e}")
+        except Exception as exc:
+            logger.error("Database connection failed: %s", exc)
             return False
-    
-    def create_table(self):
-        """Create products table if it doesn't exist"""
+
+    def create_table(self) -> None:
+        """Create the products table if it does not exist."""
         create_table_query = """
         CREATE TABLE IF NOT EXISTS products (
             asin VARCHAR(20) PRIMARY KEY,
@@ -54,245 +132,205 @@ class MetaDataStreamer:
             description TEXT
         );
         """
-        
         try:
             self.cursor.execute(create_table_query)
             self.connection.commit()
-            logger.info("Products table created successfully")
-        except Exception as e:
-            logger.error(f"Failed to create table: {e}")
+            logger.info("Products table created successfully.")
+        except Exception as exc:
+            logger.error("Failed to create table: %s", exc)
             self.connection.rollback()
             raise
-    
-    def extract_product_data(self, json_line: str) -> Optional[Dict]:
-        """Extract required fields from JSON line"""
-        try:
-            data = json.loads(json_line.strip())
-            
-            # Extract required fields
-            asin = data.get('asin')
-            title = data.get('title', '')
-            brand = data.get('brand', '')
-            image_url = data.get('imageURL', '')
-            
-            # Extract description from various possible fields
-            description = self._extract_description(data)
-            
-            # Skip if ASIN is missing (required field)
-            if not asin:
-                return None
-            
-            return {
-                'asin': asin,
-                'title': title,
-                'brand': brand,
-                'image_url': image_url,
-                'description': description
-            }
-            
-        except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON line: {e}")
-            return None
-        except Exception as e:
-            logger.warning(f"Error processing line: {e}")
-            return None
-    
-    def _extract_description(self, data: Dict) -> str:
-        """Extract description from various possible fields"""
-        # Try different fields that might contain description
-        description_fields = ['description', 'feature', 'details', 'product_description']
-        
-        for field in description_fields:
-            if field in data:
-                value = data[field]
-                if isinstance(value, list):
-                    # Join list items
-                    return ' '.join(str(item) for item in value if item)
-                elif isinstance(value, str):
-                    return value
-                elif value:
-                    return str(value)
-        
-        # Try to extract from 'title' if it's too long (sometimes description is in title)
-        title = data.get('title', '')
-        if len(title) > 200:
-            return title
-        
-        return ''
-    
-    def insert_batch(self, batch_data: List[Tuple]) -> bool:
-        """Insert a batch of data into the database"""
+
+    def close_connection(self) -> None:
+        """Close the database connection."""
+        if self.cursor:
+            self.cursor.close()
+        if self.connection:
+            self.connection.close()
+        logger.info("Database connection closed.")
+
+    # ── Batch Insertion ─────────────────────────────────
+
+    def insert_batch(self, batch_data: list[tuple]) -> bool:
+        """Insert a batch of product records.
+
+        Args:
+            batch_data: List of (asin, title, brand, image_url, description) tuples.
+
+        Returns:
+            True on success, False on failure.
+        """
         if not batch_data:
             return True
-        
+
         insert_query = """
         INSERT INTO products (asin, title, brand, image_url, description)
-        VALUES %s
+        VALUES %%s
         ON CONFLICT (asin) DO NOTHING
         """
-        
+
         try:
             execute_values(
                 self.cursor,
                 insert_query,
                 batch_data,
                 template=None,
-                page_size=len(batch_data)
+                page_size=len(batch_data),
             )
             self.connection.commit()
             self.total_inserted += len(batch_data)
             return True
-        except Exception as e:
-            logger.error(f"Failed to insert batch: {e}")
+        except Exception as exc:
+            logger.error("Batch insert failed: %s", exc)
             self.connection.rollback()
             return False
-    
-    def stream_and_insert(self, file_path: str, max_rows: Optional[int] = None):
-        """Stream data from gzipped file and insert into database"""
+
+    # ── Streaming Pipeline ──────────────────────────────
+
+    def stream_and_insert(
+        self,
+        file_path: str | Path,
+        max_rows: int | None = None,
+    ) -> bool:
+        """Stream from a gzipped JSONL file and bulk-insert into PostgreSQL.
+
+        Args:
+            file_path: Path to the gzipped JSONL file.
+            max_rows: Maximum number of rows to process (None for unlimited).
+
+        Returns:
+            True if processing completed successfully.
+        """
         file_path = Path(file_path)
-        
         if not file_path.exists():
-            logger.error(f"File not found: {file_path}")
+            logger.error("File not found: %s", file_path)
             return False
-        
-        logger.info(f"Starting to process: {file_path}")
-        logger.info(f"Batch size: {self.batch_size}")
-        logger.info(f"Max rows: {max_rows if max_rows else 'All'}")
-        
+
+        logger.info("Processing file: %s", file_path.name)
+        logger.info("Batch size: %d", self.batch_size)
+        logger.info("Max rows: %s", max_rows or "All")
+
         start_time = time.time()
-        batch_data = []
-        
+        batch_data: list[tuple] = []
+
         try:
-            with gzip.open(file_path, 'rt', encoding='utf-8') as f:
+            with gzip.open(file_path, "rt", encoding="utf-8") as f:
                 for line_num, line in enumerate(f, 1):
-                    # Check if we've reached the limit
                     if max_rows and self.total_processed >= max_rows:
                         break
-                    
-                    # Extract product data
-                    product_data = self.extract_product_data(line)
-                    
+
+                    product_data = extract_product_data(line)
                     if product_data:
-                        # Convert to tuple for bulk insert
-                        row = (
-                            product_data['asin'],
-                            product_data['title'],
-                            product_data['brand'],
-                            product_data['image_url'],
-                            product_data['description']
-                        )
-                        batch_data.append(row)
-                        
-                        # Insert when batch is full
+                        batch_data.append((
+                            product_data["asin"],
+                            product_data["title"],
+                            product_data["brand"],
+                            product_data["image_url"],
+                            product_data["description"],
+                        ))
+
                         if len(batch_data) >= self.batch_size:
                             if self.insert_batch(batch_data):
                                 self.total_processed += len(batch_data)
-                                logger.info(f"Processed: {self.total_processed}, "
-                                          f"Inserted: {self.total_inserted}, "
-                                          f"Skipped: {self.total_skipped}")
+                                logger.info(
+                                    "Processed: %s, Inserted: %s, Skipped: %s",
+                                    self.total_processed,
+                                    self.total_inserted,
+                                    self.total_skipped,
+                                )
                             else:
                                 self.total_skipped += len(batch_data)
-                            
                             batch_data = []
                     else:
                         self.total_skipped += 1
-                    
-                    # Progress logging every 10,000 records
+
                     if line_num % 10000 == 0:
                         elapsed = time.time() - start_time
-                        logger.info(f"Progress: {line_num:,} lines processed, "
-                                  f"{elapsed:.2f}s elapsed")
-        
+                        logger.info(
+                            "Progress: %s lines processed (%.2fs elapsed)",
+                            f"{line_num:,}",
+                            elapsed,
+                        )
+
         except KeyboardInterrupt:
-            logger.warning("Processing interrupted by user")
-        except Exception as e:
-            logger.error(f"Error during streaming: {e}")
+            logger.warning("Processing interrupted by user.")
+        except Exception as exc:
+            logger.error("Streaming error: %s", exc)
             return False
-        
-        # Insert remaining data in final batch
+
+        # Insert final batch
         if batch_data:
             if self.insert_batch(batch_data):
                 self.total_processed += len(batch_data)
-                logger.info(f"Final batch - Processed: {self.total_processed}, "
-                          f"Inserted: {self.total_inserted}")
+                logger.info(
+                    "Final batch — Processed: %s, Inserted: %s",
+                    self.total_processed,
+                    self.total_inserted,
+                )
             else:
                 self.total_skipped += len(batch_data)
-        
-        # Final statistics
+
         elapsed = time.time() - start_time
-        logger.info(f"Processing completed!")
-        logger.info(f"Total lines processed: {self.total_processed:,}")
-        logger.info(f"Total records inserted: {self.total_inserted:,}")
-        logger.info(f"Total records skipped: {self.total_skipped:,}")
-        logger.info(f"Total time: {elapsed:.2f} seconds")
-        logger.info(f"Average speed: {self.total_processed / elapsed:.2f} lines/second")
-        
+        logger.info("Processing completed!")
+        logger.info("Total lines processed: %s", f"{self.total_processed:,}")
+        logger.info("Total records inserted: %s", f"{self.total_inserted:,}")
+        logger.info("Total records skipped: %s", f"{self.total_skipped:,}")
+        logger.info("Total time: %.2f seconds", elapsed)
+        if elapsed > 0:
+            logger.info(
+                "Average speed: %.2f lines/second",
+                self.total_processed / elapsed,
+            )
+
         return True
-    
-    def get_table_stats(self):
-        """Get statistics about the products table"""
+
+    # ── Statistics ──────────────────────────────────────
+
+    def get_table_stats(self) -> None:
+        """Log statistics about the products table."""
+        if not self.cursor:
+            logger.warning("No database connection for stats query.")
+            return
+
         try:
-            self.cursor.execute("SELECT COUNT(*) FROM products")
-            total_records = self.cursor.fetchone()[0]
-            
-            self.cursor.execute("SELECT COUNT(*) FROM products WHERE title IS NOT NULL AND title != ''")
-            records_with_title = self.cursor.fetchone()[0]
-            
-            self.cursor.execute("SELECT COUNT(*) FROM products WHERE brand IS NOT NULL AND brand != ''")
-            records_with_brand = self.cursor.fetchone()[0]
-            
-            self.cursor.execute("SELECT COUNT(*) FROM products WHERE image_url IS NOT NULL AND image_url != ''")
-            records_with_image = self.cursor.fetchone()[0]
-            
-            logger.info(f"Database Statistics:")
-            logger.info(f"   Total records: {total_records:,}")
-            logger.info(f"   Records with title: {records_with_title:,}")
-            logger.info(f"   Records with brand: {records_with_brand:,}")
-            logger.info(f"   Records with image: {records_with_image:,}")
-            
-        except Exception as e:
-            logger.error(f"Failed to get table stats: {e}")
-    
-    def close_connection(self):
-        """Close database connection"""
-        if self.cursor:
-            self.cursor.close()
-        if self.connection:
-            self.connection.close()
-        logger.info("Database connection closed")
+            queries = {
+                "Total records": "SELECT COUNT(*) FROM products",
+                "Records with title": "SELECT COUNT(*) FROM products WHERE title IS NOT NULL AND title != ''",
+                "Records with brand": "SELECT COUNT(*) FROM products WHERE brand IS NOT NULL AND brand != ''",
+                "Records with image": "SELECT COUNT(*) FROM products WHERE image_url IS NOT NULL AND image_url != ''",
+            }
+            for label, query in queries.items():
+                self.cursor.execute(query)
+                count = self.cursor.fetchone()[0]
+                logger.info("   %s: %s", label, f"{count:,}")
+        except Exception as exc:
+            logger.error("Failed to get table stats: %s", exc)
 
 
-def main():
-    """Main execution function"""
-    # Database configuration
+# ── Main Entry Point ────────────────────────────────────
+
+
+def main() -> None:
+    """Run the metadata streaming pipeline."""
     db_config = DatabaseConfig()
-    
-    # Initialize streamer
     streamer = MetaDataStreamer(db_config)
-    
-    # Connect to database
+
     if not streamer.connect_to_database():
         return
-    
+
     try:
-        # Create table
         streamer.create_table()
-        
-        # Stream data from meta file
-        meta_file = "D:/MyWorkspace/recommendation-system/ai-model/data/dataset/meta_AMAZON_FASHION.json.gz"
+
+        meta_file = Path(__file__).parent / "dataset" / "meta_AMAZON_FASHION.json.gz"
         success = streamer.stream_and_insert(meta_file, max_rows=None)
-        
+
         if success:
-            # Show final statistics
             streamer.get_table_stats()
         else:
-            logger.error("Processing failed")
-    
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-    
+            logger.error("Processing failed.")
+    except Exception as exc:
+        logger.error("Unexpected error: %s", exc)
     finally:
-        # Always close connection
         streamer.close_connection()
 
 
