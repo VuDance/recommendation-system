@@ -22,7 +22,6 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main.product_tower import ProductTower
-from main.user_tower import UserTower
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -144,17 +143,6 @@ class ModelEvaluator:
             )
 
         logger.info("Loading models...")
-
-        self.user_tower = UserTower(
-            product_vocab_size=len(self.product_encoder.classes_),
-            product_embed_dim=16,
-            hidden_dim=64,
-            num_layers=1,
-            output_dim=64,
-        ).to(self.device)
-        user_ckpt = torch.load(user_checkpoint, map_location=self.device, weights_only=True)
-        self.user_tower.load_state_dict(user_ckpt["model_state_dict"])
-        self.user_tower.eval()
 
         self.product_tower = ProductTower(
             brand_vocab_size=len(self.brand_encoder.classes_),
