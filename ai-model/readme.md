@@ -1,6 +1,9 @@
-# Two-Tower Recommendation System
+# Recommendation System
 
-A deep learning-based recommendation system using the **Two-Tower architecture** with contrastive learning, implemented in PyTorch. Product embeddings are stored in **Milvus** for fast similarity search at inference time.
+This project contains two recommendation approaches:
+
+1. **Two-Tower Architecture** - Deep learning model with User Tower and Product Tower
+2. **Content-Based Filtering** - Direct content similarity using text embeddings in Milvus
 
 ## Architecture
 
@@ -36,23 +39,30 @@ A deep learning-based recommendation system using the **Two-Tower architecture**
 
 ```
 ai-model/
-├── data/                          # Data processing scripts
-│   ├── database_config.py         # PostgreSQL connection configuration
-│   ├── encoder.py                 # SentenceTransformer text encoding
-│   ├── process_data.py            # Raw data → processed parquet files
-│   ├── stream_meta_to_postgres.py # Import metadata into PostgreSQL
-│   ├── compute_product_vectors.py # Generate product embeddings
-│   └── actual_milvus_integration.py # Milvus collection management
-├── main/                          # Core model code
-│   ├── product_tower.py           # Product Tower model
-│   ├── user_tower.py              # User Tower model
-│   ├── train.py                   # Training script
-│   ├── inference_pipeline.py      # Recommendation pipeline
+├── data/                              # Data processing scripts
+│   ├── database_config.py             # PostgreSQL connection configuration
+│   ├── encoder.py                     # SentenceTransformer text encoding
+│   ├── process_data.py                # Raw data → processed parquet files
+│   ├── stream_meta_to_postgres.py     # Import metadata into PostgreSQL
+│   ├── compute_product_vectors.py     # Generate product embeddings (Two-Tower)
+│   ├── actual_milvus_integration.py   # Milvus collection management
+│   ├── generate_content_test_set.py   # Generate test set for content-based (NEW)
+│   └── dataset/
+│       └── products_clean.csv         # Cleaned product data
+├── main/                              # Core model code
+│   ├── product_tower.py               # Product Tower model
+│   ├── user_tower.py                  # User Tower model
+│   ├── train.py                       # Training script (Two-Tower)
+│   ├── inference_pipeline.py          # Recommendation pipeline
+│   ├── evaluate.py                    # Evaluation (Two-Tower)
+│   ├── evaluate_content_based.py      # Evaluation (Content-Based) (NEW)
 │   └── util/
-│       └── util.py                # Utility functions
-├── docker-compose.yml             # Milvus services
-├── requirements.txt               # Python dependencies
-└── readme.md                      # This file
+│       └── util.py                    # Utility functions
+├── docker-compose.yml                 # Milvus services
+├── requirements.txt                   # Python dependencies
+├── run_content_based.sh               # Content-based pipeline (Linux/Mac)
+├── run_content_based.bat              # Content-based pipeline (Windows)
+└── readme.md                          # This file
 ```
 
 ## Quick Start
@@ -142,6 +152,94 @@ python evaluate.py --device cpu
 cd main
 python inference_pipeline.py
 ```
+
+---
+
+## Content-Based Filtering (No User Tower Required)
+
+This approach uses **content similarity** directly via text embeddings stored in Milvus.
+It does NOT require training a user tower model — recommendations are based purely on
+product text content similarity.
+
+### How It Works
+
+```
+Product Title/Description ──► SentenceTransformer ──► Embedding (384-d)
+                                                            │
+                                                   Insert into Milvus
+                                                            │
+Query Text ──► SentenceTransformer ──► Embedding ──► ANN Search ──► Similar Products
+```
+
+### Quick Start - Content-Based Filtering
+
+#### Step 1: Generate Test Set
+
+```bash
+cd ai-model
+python data/generate_content_test_set.py \
+    --csv-path data/dataset/products_clean.csv \
+    --output-dir data/processed_data \
+    --n-queries 1000
+```
+
+This script:
+- Loads products from `products_clean.csv`
+- Computes text embeddings using SentenceTransformer
+- Creates query/ground-truth pairs for evaluation
+- Saves test set to `data/processed_data/`
+
+Output files:
+- `content_test_queries.parquet` - Test queries with ground truth
+- `content_products.parquet` - Product catalog
+- `content_embeddings.npy` - Pre-computed embeddings
+- `content_test_metadata.pkl` - Test set statistics
+
+#### Step 2: Evaluate Content-Based Filtering
+
+```bash
+# Brute-force evaluation (recommended for accuracy)
+python main/evaluate_content_based.py --data-dir data/processed_data
+
+# Using Milvus ANN search (faster for large catalogs)
+python main/evaluate_content_based.py --data-dir data/processed_data --use-milvus
+
+# Sample mode for quick testing
+python main/evaluate_content_based.py --data-dir data/processed_data --sample-queries 100
+```
+
+#### Step 3: Windows One-Click Run
+
+Simply double-click `run_content_based.bat` in the `ai-model` folder.
+
+#### Linux/Mac One-Command Run
+
+```bash
+cd ai-model
+chmod +x run_content_based.sh
+./run_content_based.sh
+```
+
+### Evaluation Metrics
+
+| Metric | Description |
+|--------|-------------|
+| **Recall@K** | Fraction of relevant (same-brand similar) items found in top-K |
+| **NDCG@K** | Ranking quality — higher if relevant items appear earlier |
+| **Hit Rate@K** | % of queries with at least one relevant item in top-K |
+| **MRR@K** | Mean Reciprocal Rank — how early the first relevant item appears |
+| **Item Coverage** | % of catalog items that get recommended |
+
+### Configuration
+
+The test set generation can be configured:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--csv-path` | `data/dataset/products_clean.csv` | Path to cleaned products |
+| `--output-dir` | `data/processed_data` | Where to save test set |
+| `--n-queries` | `1000` | Number of test queries |
+| `--seed` | `42` | Random seed for reproducibility |
 
 ## Configuration
 
