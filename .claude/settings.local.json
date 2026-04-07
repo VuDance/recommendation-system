@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm:*)",
+      "Bash(rm -f main/inference_pipeline.py main/evaluate.py main/product_tower.py main/util/util.py data/encoder.py data/database_config.py data/stream_meta_to_postgres.py data/actual_milvus_integration.py data/process_data.py data/compute_product_vectors.py data/generate_content_test_set.py main/evaluate_content_based.py)",
+      "Bash(rm -rf main/__pycache__ main/util/__pycache__ data/__pycache__ main/util)",
+      "Bash(rm -rf data/processed_data/evaluation_results.pkl data/processed_data/evaluation_results_temperature.pkl data/processed_data/evaluation_results_explore.pkl data/processed_data/content_evaluation_results.pkl data/processed_data/content_evaluation_results_temperature.pkl data/processed_data/content_evaluation_results_explore.pkl)",
+      "Bash(find data:*)",
+      "Bash(find main:*)",
+      "Bash(rm -rf main/util main/__pycache__)",
+      "Bash(rmdir main:*)",
+      "Bash(rmdir data/__pycache__)",
+      "Bash(find . -name '*.pyc' -delete)",
+      "Bash(find . -name '__pycache__' -exec rm -rf {} +)",
+      "Bash(wsl docker:*)",
+      "Bash(python main.py --mode preprocess --n-queries 1000 --seed 42)",
+      "Bash(python main.py --mode ingest)",
+      "Bash(python main.py --mode evaluate --k-values 5 10 20 50 --save-results)",
+      "Bash(python main.py --mode preprocess --n-queries 1000 --gt-top-k 50 --seed 42)"
+    ]
+  }
+}
