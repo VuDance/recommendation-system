@@ -16,7 +16,24 @@
       "Bash(python main.py --mode preprocess --n-queries 1000 --seed 42)",
       "Bash(python main.py --mode ingest)",
       "Bash(python main.py --mode evaluate --k-values 5 10 20 50 --save-results)",
-      "Bash(python main.py --mode preprocess --n-queries 1000 --gt-top-k 50 --seed 42)"
+      "Bash(python main.py --mode preprocess --n-queries 1000 --gt-top-k 50 --seed 42)",
+      "Bash(mkdir -p /d/MyWorkspace/recommendation-system/flink/src/main/java/com/vudance/flink/job)",
+      "Bash(mkdir -p /d/MyWorkspace/recommendation-system/flink/src/main/resources)",
+      "Bash(mvn clean:*)",
+      "Bash(JAVA_HOME='C:\\\\Program Files\\\\Java\\\\jdk-24' mvn:*)",
+      "Bash(ls:*)",
+      "WebSearch",
+      "Bash(docker compose up:*)",
+      "Bash(ls /mnt/)",
+      "Bash(wsl fsutil:*)",
+      "Bash(docker compose config:*)",
+      "Bash(wsl docker-compose:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(python -c ':*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)"
     ]
   }
 }

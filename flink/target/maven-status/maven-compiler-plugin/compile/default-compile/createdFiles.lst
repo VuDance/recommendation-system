@@ -1,0 +1,4 @@
+com\vudance\flink\job\UserViewAggregationJob.class
+com\vudance\flink\job\UserViewAggregationJob$WindowedViewAggregator.class
+com\vudance\flink\job\model\UserViewEvent.class
+com\vudance\flink\job\serialization\UserViewEventDeserializationSchema.class
