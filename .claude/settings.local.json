@@ -33,7 +33,9 @@
       "Bash(python -c ':*)",
       "Bash(pip install:*)",
       "Bash(python:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker:*)"
     ]
   }
 }
