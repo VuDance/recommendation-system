@@ -11,21 +11,21 @@ TOPIC = "user-view-events"
 
 # Real products from ai-model/data/dataset/products_clean.csv
 REAL_PRODUCTS = [
-    "0764443682",  # Slime Time Fall Fest
-    "1291691480",  # XCC Qi promise new spider snake
-    "1940280001",  # Magical Things I Really Do Do Too!
-    "1940735033",  # Ashes to Ashes, Oranges to Oranges
-    "1940967805",  # Aether & Empire #1
-    "1942705034",  # 365 Affirmations for a Year of Love
-    "3293015344",  # Blessed by Pope Benedetto XVI Bracelet
-    "5378828716",  # Womens Sexy Sleeveless Camouflage Print
-    "6041002984",  # Sevendayz Men's Shady Records Eminem Hoodie
-    "630456984X",  # Dante's Peak - Laserdisc
-    "7106116521",  # Milliongadgets Earring Safety Backs
-    "8037200124",  # Envirosax Kids Series Jessie & Lulu
-    "8037200221",  # Envirosax Greengrocer Series Bag
-    "8279996567",  # Blessed by Pope Benedetto XVI Rosary
-    "9239282785",  # Tideclothes ALAGIRLS Strapless Beading
+    "1",  # Slime Time Fall Fest
+    "2",  # XCC Qi promise new spider snake
+    "3",  # Magical Things I Really Do Do Too!
+    "4",  # Ashes to Ashes, Oranges to Oranges
+    "5",  # Aether & Empire #1
+    "1",  # 365 Affirmations for a Year of Love
+    "2",  # Blessed by Pope Benedetto XVI Bracelet
+    "2",  # Womens Sexy Sleeveless Camouflage Print
+    "1",  # Sevendayz Men's Shady Records Eminem Hoodie
+    "4",  # Dante's Peak - Laserdisc
+    "3",  # Milliongadgets Earring Safety Backs
+    "5",  # Envirosax Kids Series Jessie & Lulu
+    "8",  # Envirosax Greengrocer Series Bag
+    "34",  # Blessed by Pope Benedetto XVI Rosary
+    "13",  # Tideclothes ALAGIRLS Strapless Beading
 ]
 
 TEST_USERS = ["user-001", "user-002", "user-003", "user-004", "user-005"]

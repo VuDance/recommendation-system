@@ -1,16 +1,19 @@
 package com.vudance.flink.job;
 
 import com.vudance.flink.job.model.UserViewEvent;
+import com.vudance.flink.job.operator.RecommendationEnrichmentOperator;
+import com.vudance.flink.job.model.UserViewProfile;
 import com.vudance.flink.job.serialization.UserViewEventDeserializationSchema;
+import com.vudance.flink.job.sink.RedisRecommendationSink;
+import com.vudance.flink.job.sink.RedisRecommendationSink.UserRecommendation;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
-import org.apache.flink.connector.kafka.sink.KafkaSink;
+import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.flink.streaming.api.datastream.AsyncDataStream;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
@@ -21,50 +24,57 @@ import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Flink streaming job that consumes user product view events from Kafka,
- * aggregates counts per user over a processing-time window, and publishes
- * user interest profiles to an output Kafka topic for the ML service to consume.
+ * Extended Flink job pipeline:
  *
- * <p>Kafka topics:
- * <ul>
- *   <li>{@code user-view-events} (input) — published by Java backend on each product view</li>
- *   <li>{@code user-interest-profiles} (output) — aggregated profiles consumed by ML service</li>
- * </ul>
- *
- * <p>Input event JSON:
  * <pre>
- * {"userId": "user-123", "productId": "B00ABC123", "timestamp": 1712000000000}
- * </pre>
- *
- * <p>Output event JSON:
- * <pre>
- * {
- *   "userId": "user-123",
- *   "viewedProducts": {"B00ABC123": 3, "B00XYZ789": 1},
- *   "windowStart": 1712000000000,
- *   "windowEnd": 1712003600000
- * }
+ *  Kafka (user-view-events)
+ *       │
+ *       ▼
+ *  keyBy(userId)
+ *       │
+ *       ▼
+ *  WindowedViewAggregator          ← tumbling processing-time window (1 min)
+ *  emits UserViewProfile
+ *       │
+ *       ▼
+ *  AsyncDataStream                 ← non-blocking, 4 concurrent Milvus queries
+ *  RecommendationEnrichmentOperator
+ *       │  weighted-avg vector → Milvus ANN search → top-20 products
+ *       ▼
+ *  RedisRecommendationSink         ← HSET recommendations:{userId} productId score
+ *                                     + EXPIRE 7200
  * </pre>
  */
 public class UserViewAggregationJob {
+
     private static final Logger log = LoggerFactory.getLogger(UserViewAggregationJob.class);
 
-    // Kafka configuration — use Docker-internal address (containers on same network)
-    private static final String KAFKA_BOOTSTRAP_SERVERS = "kafka:29092";
-    private static final String INPUT_TOPIC = "user-view-events";
-    private static final String OUTPUT_TOPIC = "user-interest-profiles";
+    // ── Infrastructure addresses ─────────────────────────────────────────────
+    private static final String KAFKA_BOOTSTRAP_SERVERS = "localhost:9092";
+    private static final String MILVUS_HOST             = "localhost";
+    private static final int    MILVUS_PORT             = 19530;
+    private static final String REDIS_HOST              = "localhost";
+    private static final int    REDIS_PORT              = 6379;
 
-    // Window configuration
+    // ── Topic names ───────────────────────────────────────────────────────────
+    private static final String INPUT_TOPIC  = "user-view-events";
+
+    // ── Window ────────────────────────────────────────────────────────────────
     private static final long WINDOW_SIZE_MINUTES = 1;
+
+    // ── Async operator config ─────────────────────────────────────────────────
+    private static final int  ASYNC_CAPACITY        = 100; // max in-flight async requests
+    private static final long ASYNC_TIMEOUT_SECONDS = 10;
 
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.enableCheckpointing(5_000L);
         env.setParallelism(2);
 
-        // ── Source: Kafka ──────────────────────────────────────────
+        // ── Source ───────────────────────────────────────────────────────────
         KafkaSource<UserViewEvent> source = KafkaSource.<UserViewEvent>builder()
                 .setBootstrapServers(KAFKA_BOOTSTRAP_SERVERS)
                 .setTopics(INPUT_TOPIC)
@@ -76,100 +86,93 @@ public class UserViewAggregationJob {
         DataStream<UserViewEvent> viewStream = env
                 .fromSource(source, WatermarkStrategy.noWatermarks(), "kafka-source")
                 .name("User View Source");
-
-        // ── Key by userId, process and aggregate ────────────────────
-        DataStream<String> profiles = viewStream
+        viewStream.print("Raw Event");
+        // ── Aggregate view counts per user per window ─────────────────────────
+        DataStream<com.vudance.flink.job.model.UserViewProfile> profiles = viewStream
                 .keyBy(UserViewEvent::getUserId)
                 .process(new WindowedViewAggregator())
                 .name("User View Aggregator");
 
-        // ── Sink: Kafka ─────────────────────────────────────────────
-        KafkaSink<String> sink = KafkaSink.<String>builder()
-                .setBootstrapServers(KAFKA_BOOTSTRAP_SERVERS)
-                .setRecordSerializer(
-                        KafkaRecordSerializationSchema.<String>builder()
-                                .setTopic(OUTPUT_TOPIC)
-                                .setValueSerializationSchema(new SimpleStringSchema())
-                                .build()
-                )
-                .build();
+        // ── Async enrich: Milvus vector search ────────────────────────────────
+        DataStream<UserRecommendation> recommendations = AsyncDataStream.unorderedWait(
+                profiles,
+                new RecommendationEnrichmentOperator(MILVUS_HOST, MILVUS_PORT),
+                ASYNC_TIMEOUT_SECONDS,
+                TimeUnit.SECONDS,
+                ASYNC_CAPACITY
+        ).name("Milvus Recommendation Enrichment");
 
-        profiles.sinkTo(sink).name("User Interest Kafka Sink");
+        // ── Sink: Redis ───────────────────────────────────────────────────────
+        recommendations
+                .addSink(new RedisRecommendationSink(REDIS_HOST, REDIS_PORT))
+                .name("Redis Recommendation Sink");
 
-        // Also print to stdout for debugging
-        profiles.print().name("Debug Console Print");
+        // Debug
+        recommendations
+                .map(r -> String.format("userId=%s recs=%d", r.userId, r.recommendations.size()))
+                .print()
+                .name("Debug Console");
 
-        env.execute("User View Aggregation Job");
+        env.execute("User View Aggregation + Recommendation Job");
     }
 
-    /**
-     * Aggregates view counts per user within a processing-time tumbling window (60 min).
-     * Emits the aggregated result when the window fires.
-     */
-    public static class WindowedViewAggregator extends KeyedProcessFunction<String, UserViewEvent, String> {
+    // ─────────────────────────────────────────────────────────────────────────
+    // Aggregator: same logic as before, but emits UserViewProfile (typed POJO)
+    // instead of raw JSON string.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static class WindowedViewAggregator
+            extends KeyedProcessFunction<String, UserViewEvent, UserViewProfile> {
 
         private static final long serialVersionUID = 1L;
-        private final ObjectMapper mapper = new ObjectMapper();
 
         private transient ValueState<Map<String, Long>> viewCounts;
         private transient ValueState<Long> windowEnd;
 
         @Override
-        public void open(org.apache.flink.configuration.Configuration parameters) {
+        public void open(Configuration parameters) {
             viewCounts = getRuntimeContext().getState(
-                    new ValueStateDescriptor<>("view-counts", org.apache.flink.api.common.typeinfo.Types.MAP(
-                            org.apache.flink.api.common.typeinfo.Types.STRING,
-                            org.apache.flink.api.common.typeinfo.Types.LONG
-                    ))
+                    new ValueStateDescriptor<>("view-counts",
+                            Types.MAP(Types.STRING, Types.LONG))
             );
             windowEnd = getRuntimeContext().getState(
-                    new ValueStateDescriptor<>("window-end", org.apache.flink.api.common.typeinfo.Types.LONG)
+                    new ValueStateDescriptor<>("window-end", Types.LONG)
             );
         }
 
         @Override
-        public void processElement(UserViewEvent event, Context ctx, Collector<String> out) throws Exception {
-            long currentTime = ctx.timerService().currentProcessingTime();
+        public void processElement(UserViewEvent event, Context ctx,
+                                   Collector<UserViewProfile> out) throws Exception {
+            long now = ctx.timerService().currentProcessingTime();
 
-            // If this is the first event, set up the window timer
             Long currentWindowEnd = windowEnd.value();
             if (currentWindowEnd == null) {
-                long windowEndTs = currentTime + (Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds());
-                windowEnd.update(windowEndTs);
-                ctx.timerService().registerProcessingTimeTimer(windowEndTs);
+                long end = now + Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds();
+                windowEnd.update(end);
+                ctx.timerService().registerProcessingTimeTimer(end);
             }
 
-            // Increment view count for the product
             Map<String, Long> counts = viewCounts.value();
-            if (counts == null) {
-                counts = new HashMap<>();
-            }
+            if (counts == null) counts = new HashMap<>();
             counts.merge(event.getProductId(), 1L, Long::sum);
             viewCounts.update(counts);
         }
 
         @Override
-        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+        public void onTimer(long timestamp, OnTimerContext ctx,
+                            Collector<UserViewProfile> out) throws Exception {
             Map<String, Long> counts = viewCounts.value();
+
             if (counts != null && !counts.isEmpty()) {
-                Map<String, Object> profile = new HashMap<>();
-                profile.put("userId", ctx.getCurrentKey());
-                profile.put("viewedProducts", counts);
-                // Compute approximate window bounds
-                long startTime = timestamp - Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds();
-                profile.put("windowStart", startTime);
-                profile.put("windowEnd", timestamp);
-
-                out.collect(mapper.writeValueAsString(profile));
-
-                // Reset state and register next window
+                long start = timestamp - Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds();
+                out.collect(new UserViewProfile(ctx.getCurrentKey(), counts, start, timestamp));
                 viewCounts.clear();
-                long nextWindowEnd = timestamp + Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds();
-                windowEnd.update(nextWindowEnd);
-                ctx.timerService().registerProcessingTimeTimer(nextWindowEnd);
-            } else {
-                windowEnd.clear();
             }
+
+            // Always schedule next window (even if empty, to keep timer alive)
+            long nextEnd = timestamp + Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds();
+            windowEnd.update(nextEnd);
+            ctx.timerService().registerProcessingTimeTimer(nextEnd);
         }
     }
 }
