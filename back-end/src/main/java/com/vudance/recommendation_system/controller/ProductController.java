@@ -52,7 +52,7 @@ public class ProductController {
         @ApiResponse(responseCode = "404", description = "Product not found")
     })
     @GetMapping("/{id}")
-    public ResponseEntity<ProductDTO> getProductById(@PathVariable String id) {
+    public ResponseEntity<ProductDTO> getProductById(@PathVariable Integer id) {
         return productService.findById(id)
                 .map(product -> ResponseEntity.ok(modelMapper.toProductDTO(product)))
                 .orElse(ResponseEntity.notFound().build());

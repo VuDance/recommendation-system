@@ -91,7 +91,7 @@ def run_ingest(args: argparse.Namespace) -> None:
     train_vectors = data["train_vectors"]
     train_products = data["train_products"]
 
-    product_ids = train_products.get("product_id", train_products.index.astype(str)).tolist()
+    product_ids = train_products.get("asin", train_products.index.astype(str)).tolist()
     product_idxs = list(range(len(train_vectors)))
     brands = train_products.get("brand", pd.Series([""] * len(train_products))).tolist()
 

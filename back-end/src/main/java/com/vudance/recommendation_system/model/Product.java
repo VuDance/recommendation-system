@@ -19,7 +19,11 @@ public class Product {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
     private String asin;
+
+    private Integer train_id;
     
     @NotBlank
     @Column(nullable = false, columnDefinition = "TEXT")

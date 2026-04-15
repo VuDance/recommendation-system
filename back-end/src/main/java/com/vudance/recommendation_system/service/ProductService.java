@@ -26,8 +26,12 @@ public class ProductService {
         return productRepository.findAll(pageable);
     }
     
-    public Optional<Product> findById(String id) {
+    public Optional<Product> findById(Integer id) {
         return productRepository.findById(id);
+    }
+
+    public List<Product> findAll(List<String> ids) {
+        return productRepository.findAllByAsinIn(ids);
     }
     
     public List<Product> findByCategory(String brand) {
@@ -42,7 +46,7 @@ public class ProductService {
         return productRepository.save(product);
     }
     
-    public void deleteById(String id) {
+    public void deleteById(Integer id) {
         productRepository.deleteById(id);
     }
     

@@ -1,10 +1,18 @@
 package com.vudance.recommendation_system.controller;
 
+import com.vudance.recommendation_system.dto.ProductDTO;
 import com.vudance.recommendation_system.dto.RecommendationDTO;
+import com.vudance.recommendation_system.model.Product;
+import com.vudance.recommendation_system.service.ProductService;
+import com.vudance.recommendation_system.service.RedisService;
+import com.vudance.recommendation_system.util.ModelMapper;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+import org.springdoc.core.converters.models.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,6 +22,15 @@ import java.util.*;
 @RequestMapping("/api/recommendations")
 @Tag(name = "Recommendations", description = "API for getting product recommendations")
 public class RecommendationController {
+    private final RedisService redisService;
+    private final ProductService productService;
+    private final ModelMapper modelMapper;
+
+    public RecommendationController(RedisService redisService, ProductService productService, ModelMapper modelMapper) {
+        this.redisService = redisService;
+        this.productService = productService;
+        this.modelMapper = modelMapper;
+    }
 
     @Operation(summary = "Get user recommendations", description = "Get personalized product recommendations for a user")
     @ApiResponses(value = {
@@ -21,46 +38,15 @@ public class RecommendationController {
             @ApiResponse(responseCode = "404", description = "User not found")
     })
     @GetMapping("/{userId}")
-    public ResponseEntity<List<RecommendationDTO>> getUserRecommendations(@PathVariable String userId) {
-        // Mock recommendation data based on real ASINs from products_clean.csv
-        List<String> mockAsins = Arrays.asList(
-                "0764443682",  // Slime Time Fall Fest
-                "1291691480",  // XCC Qi promise new spider snake
-                "1940280001",  // Magical Things I Really Do Do Too!
-                "1940735033",  // Ashes to Ashes, Oranges to Oranges
-                "1940967805",  // Aether & Empire #1
-                "1942705034",  // 365 Affirmations for a Year of Love
-                "3293015344",  // Blessed by Pope Benedetto XVI Bracelet
-                "5378828716",  // Womens Sexy Sleeveless Camouflage Print
-                "6041002984",  // Sevendayz Men's Shady Records Eminem Hoodie
-                "630456984X",  // Dante's Peak - Laserdisc
-                "7106116521",  // Milliongadgets Earring Safety Backs
-                "8037200124",  // Envirosax Kids Series Jessie & Lulu
-                "8037200221",  // Envirosax Greengrocer Series Bag
-                "8279996567",  // Blessed by Pope Benedetto XVI Rosary
-                "9239282785"   // Tideclothes ALAGIRLS Strapless Beading
-        );
-
-        // Shuffle and select random recommendations for the user
-        Collections.shuffle(mockAsins, new Random(userId.hashCode()));
-        int numRecommendations = Math.min(5 + (userId.hashCode() % 5), mockAsins.size()); // 5-9 recommendations
-
-        List<RecommendationDTO> recommendations = new ArrayList<>();
-        long windowStart = System.currentTimeMillis() - (60 * 60 * 1000); // 1 hour ago
-        long windowEnd = System.currentTimeMillis();
-
-        for (int i = 0; i < numRecommendations; i++) {
-            RecommendationDTO rec = new RecommendationDTO();
-            rec.setUserId(userId);
-            Map<String, Integer> viewedProducts = new HashMap<>();
-            viewedProducts.put(mockAsins.get(i), 1 + (i % 3)); // 1-3 views
-            rec.setViewedProducts(viewedProducts);
-            rec.setWindowStart(windowStart);
-            rec.setWindowEnd(windowEnd);
-            recommendations.add(rec);
+    public ResponseEntity<List<ProductDTO>> getUserRecommendations(@PathVariable String userId) {
+        List<String> productIds = (List<String>) redisService.getSortedHashKeys("recommendations:" + userId);
+        if (productIds == null) {
+            return ResponseEntity.notFound().build();
         }
+        List<Product> products = productService.findAll(productIds);
+        List<ProductDTO> dto = modelMapper.toProductDTOList(products);
 
-        return ResponseEntity.ok(recommendations);
+        return ResponseEntity.ok(dto);
     }
 
     @Operation(summary = "Get trending products", description = "Get trending products across all users")

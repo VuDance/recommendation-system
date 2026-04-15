@@ -37,4 +37,10 @@ public class ModelMapper {
         
         return product;
     }
+
+    public java.util.List<ProductDTO> toProductDTOList(java.util.List<Product> products) {
+        return products.stream()
+                .map(this::toProductDTO)
+                .toList();
+    }
 }
