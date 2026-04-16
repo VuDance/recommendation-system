@@ -1,7 +1,6 @@
 package com.vudance.recommendation_system.dto;
 
-import java.util.List;
-
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -10,15 +9,12 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProductDTO {
+public class LoginRequest {
     
-    private String asin;
+    @Email
+    @NotBlank
+    private String email;
     
     @NotBlank
-    private String title;
-    
-    private String description;
-    
-    private String brand;
-    private List<String> imageURL;
+    private String password;
 }

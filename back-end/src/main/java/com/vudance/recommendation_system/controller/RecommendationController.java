@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 
 import org.springdoc.core.converters.models.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -40,8 +41,10 @@ public class RecommendationController {
     @GetMapping("/{userId}")
     public ResponseEntity<List<ProductDTO>> getUserRecommendations(@PathVariable String userId) {
         List<String> productIds = (List<String>) redisService.getSortedHashKeys("recommendations:" + userId);
-        if (productIds == null) {
-            return ResponseEntity.notFound().build();
+        if (productIds == null || productIds.isEmpty()) {
+            List<Product> products = productService.findRandomProducts();
+            List<ProductDTO> dto = modelMapper.toProductDTOList(products);
+            return ResponseEntity.ok(dto);
         }
         List<Product> products = productService.findAll(productIds);
         List<ProductDTO> dto = modelMapper.toProductDTOList(products);

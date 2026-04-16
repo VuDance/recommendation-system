@@ -26,8 +26,8 @@ public class ProductService {
         return productRepository.findAll(pageable);
     }
     
-    public Optional<Product> findById(Integer id) {
-        return productRepository.findById(id);
+    public Optional<Product> findById(String asin) {
+        return productRepository.findByAsin(asin);
     }
 
     public List<Product> findAll(List<String> ids) {
@@ -52,5 +52,9 @@ public class ProductService {
     
     public boolean existsByName(String title) {
         return productRepository.existsByTitle(title);
+    }
+
+    public List<Product> findRandomProducts() {
+        return productRepository.findRandomProducts();
     }
 }

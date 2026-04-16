@@ -1,0 +1,264 @@
+/* Nike Design System CSS Variables */
+:root {
+  /* Primary Colors */
+  --nike-black: #111111;
+  --nike-white: #FFFFFF;
+
+  /* Surface & Background */
+  --snow: #FAFAFA;
+  --light-gray: #F5F5F5;
+  --hover-gray: #E5E5E5;
+  --dark-surface: #28282A;
+  --deep-charcoal: #1F1F21;
+  --dark-hover: #39393B;
+
+  /* Neutrals & Text */
+  --primary-text: #111111;
+  --secondary-text: #707072;
+  --disabled-text: #9E9EA0;
+  --disabled-inverse: #4B4B4D;
+  --border-primary: #707072;
+  --border-secondary: #CACACB;
+  --border-disabled: #CACACB;
+  --border-active: #111111;
+
+  /* Semantic & Accent */
+  --nike-red: #D30005;
+  --bright-red: #EE0005;
+  --nike-orange-badge: #D33918;
+  --orange-flash: #FF5000;
+  --success-green: #007D48;
+  --success-inverse: #1EAA52;
+  --link-blue: #1151FF;
+  --info-inverse: #1190FF;
+  --warning-yellow: #FEDF35;
+  --focus-ring: rgba(39, 93, 197, 1);
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+  --space-9: 64px;
+  --space-10: 80px;
+
+  /* Border Radius */
+  --radius-0: 0px;
+  --radius-8: 8px;
+  --radius-18: 18px;
+  --radius-20: 20px;
+  --radius-24: 24px;
+  --radius-30: 30px;
+  --radius-circle: 50%;
+}
+
+/* Reset and Base Styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--nike-white);
+  color: var(--primary-text);
+}
+
+/* Typography - Nike Design System */
+/* Display type - for hero headlines */
+.display {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  font-weight: 500;
+  font-size: 96px;
+  line-height: 0.90;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+/* Headings */
+h1 {
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1.20;
+}
+
+h2 {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.20;
+}
+
+h3 {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.50;
+}
+
+/* Body text */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+p {
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+/* Special text styles */
+.body-medium {
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.link {
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--link-blue);
+  text-decoration: none;
+}
+
+.link-small {
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.86;
+}
+
+.button-text {
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.50;
+}
+
+.button-small {
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.50;
+}
+
+.caption {
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.50;
+}
+
+.small {
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.50;
+}
+
+.tiny {
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 1.50;
+}
+
+/* Links */
+a {
+  color: var(--link-blue);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Component Base Styles - Nike Design System */
+/* Primary Button */
+.button-primary-base {
+  background-color: var(--nike-black);
+  color: var(--nike-white);
+  border: none;
+  border-radius: var(--radius-30);
+  padding: var(--space-3) var(--space-6);
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background-color 200ms ease;
+}
+
+.button-primary-base:hover {
+  background-color: var(--secondary-text);
+}
+
+.button-primary-base:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Secondary Button */
+.button-secondary-base {
+  background-color: transparent;
+  color: var(--nike-black);
+  border: 1.5px solid var(--border-secondary);
+  border-radius: var(--radius-30);
+  padding: var(--space-3) var(--space-6);
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+
+.button-secondary-base:hover {
+  border-color: var(--secondary-text);
+  background-color: var(--hover-gray);
+}
+
+/* Card Base */
+.card-base {
+  background-color: var(--nike-white);
+  border-radius: var(--radius-20);
+  border: 1px solid var(--border-secondary);
+}
+
+/* Input Base */
+.input-base {
+  background-color: var(--light-gray);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-24);
+  padding: var(--space-3) var(--space-4);
+  font-size: 16px;
+  font-family: inherit;
+  transition: border-color 200ms ease;
+}
+
+.input-base:focus {
+  outline: none;
+  border-color: var(--border-active);
+}
+
+/* Utility Classes */
+.container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+@media (max-width: 960px) {
+  .container {
+    padding: 0 var(--space-4);
+  }
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: 0 var(--space-3);
+  }
+}

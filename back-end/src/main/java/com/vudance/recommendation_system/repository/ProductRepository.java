@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Integer> {
@@ -19,4 +20,7 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
     
     boolean existsByTitle(String title);
     List<Product> findAllByAsinIn(List<String> asins);
+    @Query(value = "SELECT * FROM products ORDER BY RANDOM() LIMIT 10", nativeQuery = true)
+    List<Product> findRandomProducts();
+    Optional<Product> findByAsin(String asin); 
 }
