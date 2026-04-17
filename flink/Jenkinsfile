@@ -49,18 +49,6 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                dir('flink') {
-                    script {
-                        echo '=== Building Docker image locally ==='
-                        // Build image với tag latest để docker-compose sử dụng luôn
-                        sh "docker build -t ${DOCKER_FULL_IMAGE} -f Dockerfile ."
-                    }
-                }
-            }
-        }
-
         stage('Deploy with Docker Compose') {
             steps {
                 dir('flink') {
