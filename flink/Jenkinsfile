@@ -23,6 +23,17 @@ pipeline {
             }
         }
 
+        stage('Verify Environment') {
+            steps {
+                script {
+                    // Bước này cực kỳ quan trọng để debug
+                    sh 'echo "JAVA_HOME is: $JAVA_HOME"'
+                    sh 'java -version'
+                    sh 'mvn -version'
+                }
+            }
+        }
+
         stage('Maven Build & Package') {
             steps {
                 dir('flink') {
