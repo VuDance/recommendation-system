@@ -57,10 +57,10 @@ pipeline {
                         // --build: Đảm bảo build lại nếu có thay đổi trong config
                         // -d: Chạy ngầm
                         // --remove-orphans: Xóa các container cũ không còn trong file config
-                        sh 'docker-compose up -d --remove-orphans'
+                        sh 'docker compose up -d --remove-orphans'
                         
                         echo '=== Service Status ==='
-                        sh 'docker-compose ps'
+                        sh 'docker compose ps'
                     }
                 }
             }
