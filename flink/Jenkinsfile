@@ -64,19 +64,6 @@ pipeline {
             }
         }
 
-        stage('Archive Build Report') {
-            steps {
-                script {
-                    sh '''
-                        mkdir -p build-report
-                        echo "Build Number: ${BUILD_NUMBER}" > build-report/report.txt
-                        echo "Deploy Date: $(date)" >> build-report/report.txt
-                        echo "Status: Deployed to Local EC2" >> build-report/report.txt
-                    '''
-                    archiveArtifacts artifacts: 'build-report/*.txt', allowEmptyArchive: true
-                }
-            }
-        }
     }
 
     post {
