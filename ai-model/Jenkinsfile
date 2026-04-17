@@ -42,21 +42,6 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
-            steps {
-                script {
-                    echo '=== Installing Python dependencies ==='
-                    sh '''
-                        . ${VENV_PATH}/bin/activate
-                        pip install -r ai-model/requirements.txt
-                        
-                        # Additional dependencies for development/testing
-                        pip install pytest pytest-cov pylint flake8 black
-                    '''
-                }
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 dir('ai-model') { 
