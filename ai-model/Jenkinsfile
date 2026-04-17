@@ -27,10 +27,10 @@ pipeline {
                         // --build: Đảm bảo build lại image mới nếu code có thay đổi
                         // -d: Chạy ngầm (detached mode)
                         // --remove-orphans: Dọn dẹp các container thừa không định nghĩa trong file
-                        sh 'docker-compose up --build -d --remove-orphans'
+                        sh 'docker compose up --build -d --remove-orphans'
                         
                         echo '=== Deployment Status ==='
-                        sh 'docker-compose ps'
+                        sh 'docker compose ps'
                     }
                 }
             }
