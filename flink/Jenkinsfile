@@ -1,0 +1,104 @@
+pipeline {
+    agent any
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '5')) // Giảm số lượng giữ lại để tránh đầy 12GB /var/lib/jenkins
+        timeout(time: 1, unit: 'HOURS')
+        timestamps()
+    }
+
+    environment {
+        JAVA_VERSION = '17'
+        MAVEN_HOME = tool 'Maven3'
+        PATH = "${MAVEN_HOME}/bin:${PATH}"
+        DOCKER_IMAGE_NAME = 'vudance/recommendation-system-flink'
+        DOCKER_FULL_IMAGE = "${DOCKER_IMAGE_NAME}:latest"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '=== Pulling source code ==='
+                checkout scm
+            }
+        }
+
+        stage('Maven Build & Package') {
+            steps {
+                dir('flink') {
+                    script {
+                        echo '=== Building Fat JAR ==='
+                        // Kết hợp clean và package để tối ưu thời gian
+                        sh 'mvn clean package -DskipTests -q'
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                dir('flink') {
+                    script {
+                        echo '=== Building Docker image locally ==='
+                        // Build image với tag latest để docker-compose sử dụng luôn
+                        sh "docker build -t ${DOCKER_FULL_IMAGE} -f Dockerfile ."
+                    }
+                }
+            }
+        }
+
+        stage('Deploy with Docker Compose') {
+            steps {
+                dir('flink') {
+                    script {
+                        echo '=== Starting services with Docker Compose ==='
+                        // --build: Đảm bảo build lại nếu có thay đổi trong config
+                        // -d: Chạy ngầm
+                        // --remove-orphans: Xóa các container cũ không còn trong file config
+                        sh 'docker-compose up -d --remove-orphans'
+                        
+                        echo '=== Service Status ==='
+                        sh 'docker-compose ps'
+                    }
+                }
+            }
+        }
+
+        stage('Archive Build Report') {
+            steps {
+                script {
+                    sh '''
+                        mkdir -p build-report
+                        echo "Build Number: ${BUILD_NUMBER}" > build-report/report.txt
+                        echo "Deploy Date: $(date)" >> build-report/report.txt
+                        echo "Status: Deployed to Local EC2" >> build-report/report.txt
+                    '''
+                    archiveArtifacts artifacts: 'build-report/*.txt', allowEmptyArchive: true
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo '=== Cleaning up Docker layers ==='
+                // Xóa các image "dangling" (image rác phát sinh khi build đè tag)
+                sh 'docker image prune -f'
+            }
+        }
+        success {
+            echo '=== DEPLOY SUCCESSFUL ==='
+        }
+        failure {
+            echo '=== DEPLOY FAILED ==='
+        }
+        cleanup {
+            script {
+                echo '=== Clearing Workspace ==='
+                // Xóa sạch workspace sau khi xong để giải phóng dung lượng đĩa
+                cleanWs() 
+            }
+        }
+    }
+}
