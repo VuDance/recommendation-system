@@ -8,11 +8,14 @@ pipeline {
     }
 
     environment {
-        // Khai báo công cụ
-        JAVA_HOME = tool 'Java17' 
-        MAVEN_HOME = tool 'Maven3'
-        // Cập nhật PATH để dùng đúng Java và Maven vừa khai báo
-        PATH = "${JAVA_HOME}/bin:${MAVEN_HOME}/bin:${PATH}"
+        JDK_HOME = tool 'Java17'
+        M3_HOME = tool 'Maven3'
+        
+        // Gán trực tiếp vào JAVA_HOME
+        JAVA_HOME = "${JDK_HOME}"
+        
+        // Đưa bin của Java 17 lên ĐẦU của env.PATH
+        PATH = "${JDK_HOME}/bin:${M3_HOME}/bin:${env.PATH}"
     }
 
     stages {
