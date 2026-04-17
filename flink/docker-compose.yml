@@ -10,6 +10,11 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    healthcheck:
+      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - flink-net
 
@@ -18,7 +23,8 @@ services:
     container_name: flink-kafka
     restart: unless-stopped
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
       - "29092:29092"
@@ -31,20 +37,36 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:29092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - flink-net
 
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     container_name: flink-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - flink-net
 
   jobmanager:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: flink-jobmanager
     restart: unless-stopped
     ports:
@@ -52,25 +74,50 @@ services:
     command: jobmanager
     environment:
       - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager"
+      - "JVM_ARGS=-Xmx1536m -Xms1024m"
     volumes:
       - flink-data:/opt/flink/usrlib
+      - ./logs/jobmanager:/opt/flink/log
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - flink-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/v1/overview"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   taskmanager:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: flink-taskmanager
     restart: unless-stopped
     depends_on:
-      - jobmanager
+      jobmanager:
+        condition: service_healthy
     command: taskmanager
     environment:
       - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager\ntaskmanager.numberOfTaskSlots: 4"
+      - "JVM_ARGS=-Xmx2048m -Xms1024m"
+    volumes:
+      - ./logs/taskmanager:/opt/flink/log
     networks:
       - flink-net
+    healthcheck:
+      test: ["CMD", "ps", "aux", "|", "grep", "taskmanager"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   flink-data:
+    driver: local
+  redis-data:
     driver: local
 
 networks:
