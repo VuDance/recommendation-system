@@ -1,44 +1,38 @@
-# Multi-stage Dockerfile for Flink Streaming Job
-
-# Stage 1: Builder
-FROM maven:3.9-eclipse-temurin-17 as builder
-
+# Stage 1: Builder (Chỉ dùng nếu bạn muốn build hoàn toàn trong Docker)
+FROM maven:3.9-eclipse-temurin-17 AS builder
 WORKDIR /build
 
-# Copy pom.xml and source code
+# Tận dụng Layer Cache cho Maven Dependencies
 COPY pom.xml .
-COPY dependency-reduced-pom.xml .
-COPY src/ ./src/
+RUN mvn dependency:go-offline -B
 
-# Build the project with Maven
+COPY src/ ./src/
+# Build ra Fat JAR
 RUN mvn clean package -DskipTests -q
 
 # Stage 2: Runtime
 FROM flink:1.18-java17
 
+# Thông tin metadata
 LABEL maintainer="Vudance Team"
-LABEL description="Flink streaming job for user view event aggregation"
+LABEL project="recommendation-system"
 
-# Install additional tools if needed
+# Cài đặt công cụ cần thiết & dọn dẹp cache để giảm dung lượng
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create directory for job JARs
+# usrlib là folder đặc biệt của Flink, nó sẽ tự động load JAR khi khởi động
+USER flink
+WORKDIR /opt/flink
 RUN mkdir -p /opt/flink/usrlib
 
-# Copy the built JAR from builder stage
-COPY --from=builder /build/target/flink-job-*.jar /opt/flink/usrlib/
+# Copy file JAR (Lấy tên cụ thể để tránh copy nhầm file JAR phụ)
+COPY --from=builder /build/target/flink-job-1.0-SNAPSHOT.jar /opt/flink/usrlib/flink-job.jar
 
-# Set environment variables
-ENV FLINK_HOME=/opt/flink
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+# Health check - Kiểm tra xem JobManager có sống không
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8081/v1/overview || exit 1
 
-# Set the entrypoint to run the Flink job
 ENTRYPOINT ["/docker-entrypoint.sh"]
-
-# Default command to run the job (can be overridden)
 CMD ["jobmanager"]

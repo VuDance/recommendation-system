@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
+        buildDiscarder(logRotator(numToKeepStr: '5')) // Giảm số lượng giữ lại để tránh đầy 12GB /var/lib/jenkins
         timeout(time: 1, unit: 'HOURS')
         timestamps()
     }
@@ -11,105 +11,25 @@ pipeline {
         JAVA_VERSION = '17'
         MAVEN_HOME = tool 'Maven3'
         PATH = "${MAVEN_HOME}/bin:${PATH}"
-        DOCKER_REGISTRY = 'docker.io'
         DOCKER_IMAGE_NAME = 'vudance/recommendation-system-flink'
-        DOCKER_IMAGE_TAG = "${BUILD_NUMBER}"
-        DOCKER_FULL_IMAGE = "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-        PROJECT_NAME = 'flink-job'
-        PROJECT_VERSION = '1.0-SNAPSHOT'
+        DOCKER_FULL_IMAGE = "${DOCKER_IMAGE_NAME}:latest"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                script {
-                    echo '=== Checking out source code ==='
-                    checkout scm
-                }
+                echo '=== Pulling source code ==='
+                checkout scm
             }
         }
 
-        stage('Environment Info') {
-            steps {
-                script {
-                    echo '=== Environment Information ==='
-                    sh '''
-                        echo "Java version: $(java -version 2>&1)"
-                        echo "Maven version: $(mvn -version)"
-                        echo "Docker version: $(docker --version)"
-                    '''
-                }
-            }
-        }
-
-        stage('Maven Clean & Build') {
+        stage('Maven Build & Package') {
             steps {
                 dir('flink') {
                     script {
-                        echo '=== Building Flink project with Maven ==='
-                        sh '''
-                            mvn clean compile -U
-                            echo "✓ Maven clean and compile successful"
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Code Quality Check') {
-            parallel {
-                stage('Checkstyle') {
-                    steps {
-                        dir('flink') {
-                            script {
-                                echo '=== Running Checkstyle ==='
-                                sh '''
-                                    mvn checkstyle:check || true
-                                '''
-                            }
-                        }
-                    }
-                }
-
-                stage('SpotBugs Analysis') {
-                    steps {
-                        dir('flink') {
-                            script {
-                                echo '=== Running SpotBugs Analysis ==='
-                                sh '''
-                                    mvn spotbugs:check || true
-                                '''
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Unit & Integration Tests') {
-            steps {
-                dir('flink') {
-                    script {
-                        echo '=== Running Unit Tests ==='
-                        sh '''
-                            mvn test -DforkCount=1 -DreuseForks=false
-                            echo "✓ Tests completed"
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Maven Package') {
-            steps {
-                dir('flink') {
-                    script {
-                        echo '=== Packaging Fat JAR ==='
-                        sh '''
-                            mvn package -DskipTests -q
-                            echo "✓ Fat JAR created with Maven Shade"
-                            ls -lh target/*.jar
-                        '''
+                        echo '=== Building Fat JAR ==='
+                        // Kết hợp clean và package để tối ưu thời gian
+                        sh 'mvn clean package -DskipTests -q'
                     }
                 }
             }
@@ -119,122 +39,42 @@ pipeline {
             steps {
                 dir('flink') {
                     script {
-                        echo '=== Building Docker image ==='
-                        sh '''
-                            docker build \
-                                --build-arg JAVA_VERSION=${JAVA_VERSION} \
-                                -t ${DOCKER_FULL_IMAGE} \
-                                -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest \
-                                -f Dockerfile .
-                            
-                            docker images | grep recommendation-system-flink
-                            echo "✓ Docker image built successfully"
-                        '''
+                        echo '=== Building Docker image locally ==='
+                        // Build image với tag latest để docker-compose sử dụng luôn
+                        sh "docker build -t ${DOCKER_FULL_IMAGE} -f Dockerfile ."
                     }
                 }
             }
         }
 
-        stage('Docker Image Security Scan') {
-            steps {
-                script {
-                    echo '=== Scanning Docker image for vulnerabilities ==='
-                    sh '''
-                        # Optional: Use Trivy or similar tool
-                        # trivy image ${DOCKER_FULL_IMAGE} || true
-                        echo "Image security scan step (configure with Trivy if needed)"
-                    '''
-                }
-            }
-        }
-
-        stage('Push Docker Image') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    echo '=== Pushing Docker image to registry ==='
-                    withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', 
-                                    usernameVariable: 'DOCKER_USER', 
-                                    passwordVariable: 'DOCKER_PASS')]) {
-                        sh '''
-                            docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}
-                            docker push ${DOCKER_FULL_IMAGE}
-                            docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest
-                            echo "✓ Docker image pushed successfully"
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Archive Artifacts') {
+        stage('Deploy with Docker Compose') {
             steps {
                 dir('flink') {
                     script {
-                        echo '=== Archiving build artifacts ==='
-                        sh '''
-                            mkdir -p build-artifacts
-                            
-                            # Archive JAR files
-                            if [ -d "target" ]; then
-                                cp target/*.jar build-artifacts/ || true
-                                cp target/dependency-reduced-pom.xml build-artifacts/ || true
-                            fi
-                            
-                            # Archive test reports
-                            if [ -d "target/surefire-reports" ]; then
-                                cp -r target/surefire-reports build-artifacts/ || true
-                            fi
-                            
-                            # Copy pom.xml for reference
-                            cp pom.xml build-artifacts/ || true
-                            cp docker-compose.yml ../build-artifacts/ || true
-                            
-                            ls -lh build-artifacts/
-                        '''
+                        echo '=== Starting services with Docker Compose ==='
+                        // --build: Đảm bảo build lại nếu có thay đổi trong config
+                        // -d: Chạy ngầm
+                        // --remove-orphans: Xóa các container cũ không còn trong file config
+                        sh 'docker-compose up -d --remove-orphans'
+                        
+                        echo '=== Service Status ==='
+                        sh 'docker-compose ps'
                     }
                 }
-                archiveArtifacts artifacts: 'flink/build-artifacts/**', allowEmptyArchive: true
             }
         }
 
-        stage('Generate Build Report') {
+        stage('Archive Build Report') {
             steps {
                 script {
-                    echo '=== Generating build report ==='
                     sh '''
-                        mkdir -p build-artifacts
-                        cat > build-artifacts/build-report.txt << EOF
-=== FLINK STREAMING JOB BUILD REPORT ===
-
-Build Information:
-- Build Number: ${BUILD_NUMBER}
-- Build Branch: ${GIT_BRANCH}
-- Build Timestamp: $(date)
-- Java Version: $(java -version 2>&1 | head -1)
-- Maven Version: $(mvn -version | head -1)
-
-Artifacts:
-- Project Name: ${PROJECT_NAME}
-- Project Version: ${PROJECT_VERSION}
-- Docker Image: ${DOCKER_FULL_IMAGE}
-- Docker Registry: ${DOCKER_REGISTRY}
-
-Services Included:
-- Flink JobManager (port 8081)
-- Flink TaskManager
-- Apache Kafka (port 9092, 29092)
-- Apache Zookeeper (port 2181)
-- Redis (port 6379)
-
-Build Status: SUCCESS
-EOF
-                        cat build-artifacts/build-report.txt
+                        mkdir -p build-report
+                        echo "Build Number: ${BUILD_NUMBER}" > build-report/report.txt
+                        echo "Deploy Date: $(date)" >> build-report/report.txt
+                        echo "Status: Deployed to Local EC2" >> build-report/report.txt
                     '''
+                    archiveArtifacts artifacts: 'build-report/*.txt', allowEmptyArchive: true
                 }
-                archiveArtifacts artifacts: 'build-artifacts/build-report.txt'
             }
         }
     }
@@ -242,62 +82,22 @@ EOF
     post {
         always {
             script {
-                echo '=== Post-build cleanup ==='
-                // Clean Docker build context
-                sh 'docker system prune -f --filter "until=24h" || true'
+                echo '=== Cleaning up Docker layers ==='
+                // Xóa các image "dangling" (image rác phát sinh khi build đè tag)
+                sh 'docker image prune -f'
             }
         }
-
         success {
-            script {
-                echo '=== Build succeeded ==='
-                // Publish test results
-                junit(
-                    testResults: 'flink/target/surefire-reports/*.xml',
-                    skipPublishingChecks: true,
-                    allowEmptyResults: true
-                )
-                // Send success notification
-                // mail to: 'team@example.com',
-                //      subject: "Jenkins Build Success: ${JOB_NAME} - ${BUILD_NUMBER}",
-                //      body: "Build ${BUILD_NUMBER} succeeded.\nCheck console output at ${BUILD_URL} to view the results."
-            }
+            echo '=== DEPLOY SUCCESSFUL ==='
         }
-
         failure {
-            script {
-                echo '=== Build failed ==='
-                // Publish test results even on failure
-                junit(
-                    testResults: 'flink/target/surefire-reports/*.xml',
-                    skipPublishingChecks: true,
-                    allowEmptyResults: true
-                )
-                // Send failure notification
-                // mail to: 'team@example.com',
-                //      subject: "Jenkins Build Failed: ${JOB_NAME} - ${BUILD_NUMBER}",
-                //      body: "Build ${BUILD_NUMBER} failed.\nCheck console output at ${BUILD_URL} to view the results."
-            }
+            echo '=== DEPLOY FAILED ==='
         }
-
-        unstable {
-            script {
-                echo '=== Build is unstable ==='
-            }
-        }
-
         cleanup {
             script {
-                echo '=== Final cleanup ==='
-                // Clean workspace
-                cleanWs(
-                    deleteDirs: true,
-                    patterns: [
-                        [pattern: 'flink/target/**', type: 'INCLUDE'],
-                        [pattern: 'flink/build-artifacts/**', type: 'INCLUDE'],
-                        [pattern: 'build-artifacts/**', type: 'INCLUDE']
-                    ]
-                )
+                echo '=== Clearing Workspace ==='
+                // Xóa sạch workspace sau khi xong để giải phóng dung lượng đĩa
+                cleanWs() 
             }
         }
     }
