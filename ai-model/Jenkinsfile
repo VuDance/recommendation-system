@@ -101,23 +101,6 @@ pipeline {
             }
         }
 
-        stage('Push Docker Image') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    echo '=== Pushing Docker image to registry ==='
-                    sh '''
-                        # Ensure you have Docker credentials configured in Jenkins
-                        # docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD} ${DOCKER_REGISTRY}
-                        docker push ${DOCKER_FULL_IMAGE}
-                        docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest
-                    '''
-                }
-            }
-        }
-
         stage('Archive Artifacts') {
             steps {
                 script {
