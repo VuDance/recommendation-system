@@ -57,6 +57,21 @@ pipeline {
             }
         }
 
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo '=== Building Docker image ==='
+                    sh '''
+                        docker build \
+                            --build-arg PYTHON_VERSION=${PYTHON_VERSION} \
+                            -t ${DOCKER_FULL_IMAGE} \
+                            -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest \
+                            -f Dockerfile .
+                    '''
+                }
+            }
+        }
+
         stage('Push Docker Image') {
             when { branch 'main' }
             steps {
