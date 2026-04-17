@@ -8,11 +8,11 @@ pipeline {
     }
 
     environment {
-        JAVA_VERSION = '17'
+        // Khai báo công cụ
+        JAVA_HOME = tool 'Java17' 
         MAVEN_HOME = tool 'Maven3'
-        PATH = "${MAVEN_HOME}/bin:${PATH}"
-        DOCKER_IMAGE_NAME = 'vudance/recommendation-system-flink'
-        DOCKER_FULL_IMAGE = "${DOCKER_IMAGE_NAME}:latest"
+        // Cập nhật PATH để dùng đúng Java và Maven vừa khai báo
+        PATH = "${JAVA_HOME}/bin:${MAVEN_HOME}/bin:${PATH}"
     }
 
     stages {
