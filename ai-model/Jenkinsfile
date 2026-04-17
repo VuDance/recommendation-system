@@ -2,162 +2,59 @@ pipeline {
     agent any
 
     options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
+        buildDiscarder(logRotator(numToKeepStr: '5')) // Giảm số lượng build để tiết kiệm 12GB của bạn
         timeout(time: 1, unit: 'HOURS')
         timestamps()
-    }
-
-    environment {
-        PYTHON_VERSION = '3.10'
-        DOCKER_REGISTRY = 'docker.io'
-        DOCKER_IMAGE_NAME = 'vudance/recommendation-system-ai'
-        DOCKER_IMAGE_TAG = "${BUILD_NUMBER}"
-        DOCKER_FULL_IMAGE = "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-        VENV_PATH = '${WORKSPACE}/venv'
-        PIP_CACHE_DIR = '${WORKSPACE}/.pip-cache'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 script {
-                    echo '=== Checking out source code ==='
+                    echo '=== Pulling latest code from GitHub ==='
                     checkout scm
                 }
             }
         }
 
-        stage('Setup Python Environment') {
+        stage('Deploy with Docker Compose') {
             steps {
-                script {
-                    echo '=== Setting up Python virtual environment ==='
-                    sh '''
-                        python3 -m venv ${VENV_PATH}
-                        . ${VENV_PATH}/bin/activate
-                        pip install --upgrade pip setuptools wheel
-                        echo "Python version: $(python --version)"
-                        echo "Pip version: $(pip --version)"
-                    '''
-                }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                dir('ai-model') { 
+                // Chui vào folder chứa docker-compose.yml
+                dir('ai-model') {
                     script {
-                        echo '=== Building Docker image inside ai-model directory ==='
-                        sh '''
-                            docker build \
-                                --build-arg PYTHON_VERSION=${PYTHON_VERSION} \
-                                -t ${DOCKER_FULL_IMAGE} \
-                                -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest \
-                                -f Dockerfile .
-                        '''
+                        echo '=== Re-deploying application on local EC2 ==='
+                        
+                        // --build: Đảm bảo build lại image mới nếu code có thay đổi
+                        // -d: Chạy ngầm (detached mode)
+                        // --remove-orphans: Dọn dẹp các container thừa không định nghĩa trong file
+                        sh 'docker-compose up --build -d --remove-orphans'
+                        
+                        echo '=== Deployment Status ==='
+                        sh 'docker-compose ps'
                     }
                 }
             }
         }
-
-        stage('Push Docker Image') {
-            when { branch 'main' }
-            steps {
-                script {
-                    // Sử dụng ID đã tạo ở Bước 2
-                    withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', 
-                                    usernameVariable: 'DOCKER_USER', 
-                                    passwordVariable: 'DOCKER_PASS')]) {
-                        sh "docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}"
-                        sh "docker push ${DOCKER_FULL_IMAGE}"
-                        sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-                    }
-                }
-            }
-        }
-
-        stage('Docker Image Security Scan') {
-            steps {
-                script {
-                    echo '=== Scanning Docker image for vulnerabilities ==='
-                    sh '''
-                        # Optional: Use Trivy or similar tool
-                        # trivy image ${DOCKER_FULL_IMAGE} || true
-                        echo "Image security scan step (configure with Trivy if needed)"
-                    '''
-                }
-            }
-        }
-
-        stage('Archive Artifacts') {
-            steps {
-                script {
-                    echo '=== Archiving build artifacts ==='
-                    sh '''
-                        mkdir -p build-artifacts
-                        
-                        # Archive test coverage report if it exists
-                        if [ -d "htmlcov" ]; then
-                            cp -r htmlcov build-artifacts/
-                        fi
-                        
-                        # Copy requirements for reference
-                        cp ai-model/requirements.txt build-artifacts/ || true
-                        cp ai-model/docker-compose.yml build-artifacts/ || true
-                    '''
-                }
-                archiveArtifacts artifacts: 'build-artifacts/**', allowEmptyArchive: true
-            }
-        }
-
     }
 
     post {
         always {
             script {
-                echo '=== Cleaning up ==='
-                // Clean Docker build context
-                sh 'docker system prune -f --filter "until=24h" || true'
+                echo '=== System Cleanup ==='
+                // Xóa các image cũ, dangling layers để tránh đầy ổ cứng (vấn đề 86% của bạn)
+                sh 'docker image prune -f'
             }
         }
-
         success {
-            script {
-                echo '=== Build succeeded ==='
-                // Send success notification
-                // mail to: 'team@example.com',
-                //      subject: "Jenkins Build Success: ${JOB_NAME} - ${BUILD_NUMBER}",
-                //      body: "Build ${BUILD_NUMBER} succeeded.\nCheck console output at ${BUILD_URL} to view the results."
-            }
+            echo '=== Deployment Successful! ==='
         }
-
         failure {
-            script {
-                echo '=== Build failed ==='
-                // Send failure notification
-                // mail to: 'team@example.com',
-                //      subject: "Jenkins Build Failed: ${JOB_NAME} - ${BUILD_NUMBER}",
-                //      body: "Build ${BUILD_NUMBER} failed.\nCheck console output at ${BUILD_URL} to view the results."
-            }
+            echo '=== Deployment Failed. Check logs above. ==='
         }
-
-        unstable {
-            script {
-                echo '=== Build is unstable ==='
-            }
-        }
-
         cleanup {
             script {
-                echo '=== Final cleanup ==='
-                // Clean workspace
-                cleanWs(
-                    deleteDirs: true,
-                    patterns: [
-                        [pattern: '${VENV_PATH}/**', type: 'INCLUDE'],
-                        [pattern: '.pip-cache/**', type: 'INCLUDE'],
-                        [pattern: 'build-artifacts/**', type: 'INCLUDE']
-                    ]
-                )
+                echo '=== Cleaning Jenkins Workspace ==='
+                cleanWs() // Xóa sạch code sau khi build để giải phóng dung lượng cho /var/lib/jenkins
             }
         }
     }
