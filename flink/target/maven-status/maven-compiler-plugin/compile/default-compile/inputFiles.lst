@@ -1,0 +1,3 @@
+D:\MyWorkspace\recommendation-system\flink\src\main\java\com\vudance\flink\job\model\UserViewEvent.java
+D:\MyWorkspace\recommendation-system\flink\src\main\java\com\vudance\flink\job\serialization\UserViewEventDeserializationSchema.java
+D:\MyWorkspace\recommendation-system\flink\src\main\java\com\vudance\flink\job\UserViewAggregationJob.java

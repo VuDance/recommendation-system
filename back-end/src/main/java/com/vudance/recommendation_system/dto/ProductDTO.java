@@ -1,5 +1,7 @@
 package com.vudance.recommendation_system.dto;
 
+import java.util.List;
+
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -18,5 +20,5 @@ public class ProductDTO {
     private String description;
     
     private String brand;
-    private String imageURL;
+    private List<String> imageURL;
 }

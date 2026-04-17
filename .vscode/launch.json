@@ -2,6 +2,21 @@
     "configurations": [
         {
             "type": "java",
+            "name": "UserViewAggregationJob",
+            "request": "launch",
+            "mainClass": "com.vudance.flink.job.UserViewAggregationJob",
+            "projectName": "flink-job",
+            "vmArgs": [
+                "--add-opens=java.base/java.util=ALL-UNNAMED",
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.math=ALL-UNNAMED",
+                "--add-opens=java.base/sun.net.util=ALL-UNNAMED",
+                "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+                "--add-opens=java.base/sun.reflect.generics.reflectiveObjects=ALL-UNNAMED"
+            ]
+        },
+        {
+            "type": "java",
             "name": "Spring Boot-RecommendationSystemApplication<recommendation-system>",
             "request": "launch",
             "cwd": "${workspaceFolder}",

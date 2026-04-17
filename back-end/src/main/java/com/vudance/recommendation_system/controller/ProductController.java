@@ -3,6 +3,7 @@ package com.vudance.recommendation_system.controller;
 import com.vudance.recommendation_system.dto.ProductDTO;
 import com.vudance.recommendation_system.model.Product;
 import com.vudance.recommendation_system.service.ProductService;
+import com.vudance.recommendation_system.service.EventPublisherService;
 import com.vudance.recommendation_system.util.ModelMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,6 +13,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,10 +26,12 @@ public class ProductController {
     
     private final ProductService productService;
     private final ModelMapper modelMapper;
+    private final EventPublisherService eventPublisherService;
     
-    public ProductController(ProductService productService, ModelMapper modelMapper) {
+    public ProductController(ProductService productService, ModelMapper modelMapper, EventPublisherService eventPublisherService) {
         this.productService = productService;
         this.modelMapper = modelMapper;
+        this.eventPublisherService = eventPublisherService;
     }
     
     @Operation(summary = "Get all products", description = "Retrieve a list of all products with pagination")
@@ -53,12 +57,19 @@ public class ProductController {
     })
     @GetMapping("/{id}")
     public ResponseEntity<ProductDTO> getProductById(@PathVariable String id) {
+        // Extract user ID from JWT token if authenticated
+        String userId = null;
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof Long) {
+            userId = String.valueOf(principal);
+        }
+        
+        // Publish view event to Kafka
+        eventPublisherService.publishUserViewEvent(userId, id);
         return productService.findById(id)
                 .map(product -> ResponseEntity.ok(modelMapper.toProductDTO(product)))
                 .orElse(ResponseEntity.notFound().build());
     }
-    
-    @Operation(summary = "Get products by category", description = "Retrieve all products in a specific category")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Successfully retrieved products")
     })
