@@ -26,8 +26,10 @@ services:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     restart: unless-stopped
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio-data:/data
     # No port exposure — MinIO is only accessed internally by Milvus via the Docker network
@@ -48,9 +50,9 @@ services:
     security_opt:
       - seccomp:unconfined
     environment:
-      ETCD_ENDPOINTS: etcd:2379
+      ETCD_ENDPOINTS: ${ETCD_ENDPOINTS}
       MINIO_ADDRESS: minio:9000
-      COMMON_SECURITY_AUTHORIZATION_ENABLED: true
+      COMMON_SECURITY_AUTHORIZATION_ENABLED: ${COMMON_SECURITY_AUTHORIZATION_ENABLED}
     volumes:
       - milvus-data:/var/lib/milvus
     ports:

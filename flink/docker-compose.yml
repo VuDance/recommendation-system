@@ -6,8 +6,8 @@ services:
     container_name: flink-zookeeper
     restart: unless-stopped
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_CLIENT_PORT: ${ZOOKEEPER_CLIENT_PORT:2181}
+      ZOOKEEPER_TICK_TIME: ${ZOOKEEPER_TICK_TIME:2000}
     ports:
       - "2181:2181"
     healthcheck:
@@ -29,15 +29,15 @@ services:
       - "9092:9092"
       - "29092:29092"
     environment:
-      KAFKA_BROKER_ID: 1
+      KAFKA_BROKER_ID: ${KAFKA_BROKER_ID:1}
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR:1}
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: ${KAFKA_AUTO_CREATE_TOPICS_ENABLE:true}
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: ${KAFKA_TRANSACTION_STATE_LOG_MIN_ISR:1}
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: ${KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR:1}
+      KAFKA_LOG_RETENTION_HOURS: ${KAFKA_LOG_RETENTION_HOURS:168}
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:29092"]
       interval: 30s
@@ -51,7 +51,7 @@ services:
     container_name: flink-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:6379}:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
@@ -70,11 +70,11 @@ services:
     container_name: flink-jobmanager
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "${FLINK_JOBMANAGER_PORT:8081}:8081"
     command: jobmanager
     environment:
       - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager"
-      - "JVM_ARGS=-Xmx1536m -Xms1024m"
+      - "JVM_ARGS=-Xmx${FLINK_JOBMANAGER_JVM_MEMORY_MAX:1536m} -Xms${FLINK_JOBMANAGER_JVM_MEMORY_MIN:1024m}"
     volumes:
       - flink-data:/opt/flink/usrlib
       - ./logs/jobmanager:/opt/flink/log
@@ -102,8 +102,8 @@ services:
         condition: service_healthy
     command: taskmanager
     environment:
-      - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager\ntaskmanager.numberOfTaskSlots: 4"
-      - "JVM_ARGS=-Xmx2048m -Xms1024m"
+      - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager\ntaskmanager.numberOfTaskSlots: ${FLINK_TASKMANAGER_TASK_SLOTS:4}"
+      - "JVM_ARGS=-Xmx${FLINK_TASKMANAGER_JVM_MEMORY_MAX:2048m} -Xms${FLINK_TASKMANAGER_JVM_MEMORY_MIN:1024m}"
     volumes:
       - ./logs/taskmanager:/opt/flink/log
     networks:

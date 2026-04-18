@@ -7,6 +7,7 @@ similarity on normalised vectors).
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -19,12 +20,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MILVUS_URI = "http://localhost:19530"
+MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
 COLLECTION_NAME = "content_based_products"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
-MILVUS_USER = "root"
-MILVUS_PASSWORD = "Milvus"
+MILVUS_USER = os.getenv("MILVUS_USER", "root")
+MILVUS_PASSWORD = os.getenv("MILVUS_PASSWORD", "Milvus")
 
 
 # ── Embedding helper ─────────────────────────────────────────────────

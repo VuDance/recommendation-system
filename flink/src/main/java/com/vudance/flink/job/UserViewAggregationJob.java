@@ -53,14 +53,26 @@ public class UserViewAggregationJob {
     private static final Logger log = LoggerFactory.getLogger(UserViewAggregationJob.class);
 
     // ── Infrastructure addresses ─────────────────────────────────────────────
-    private static final String KAFKA_BOOTSTRAP_SERVERS = "localhost:9092";
-    private static final String MILVUS_HOST             = "localhost";
-    private static final int    MILVUS_PORT             = 19530;
-    private static final String REDIS_HOST              = "localhost";
-    private static final int    REDIS_PORT              = 6379;
+    private static final String KAFKA_BOOTSTRAP_SERVERS = System.getenv("KAFKA_BOOTSTRAP_SERVERS") != null 
+            ? System.getenv("KAFKA_BOOTSTRAP_SERVERS") 
+            : "localhost:9092";
+    private static final String MILVUS_HOST             = System.getenv("MILVUS_HOST") != null 
+            ? System.getenv("MILVUS_HOST") 
+            : "localhost";
+    private static final int    MILVUS_PORT             = System.getenv("MILVUS_PORT") != null 
+            ? Integer.parseInt(System.getenv("MILVUS_PORT")) 
+            : 19530;
+    private static final String REDIS_HOST              = System.getenv("REDIS_HOST") != null 
+            ? System.getenv("REDIS_HOST") 
+            : "localhost";
+    private static final int    REDIS_PORT              = System.getenv("REDIS_PORT") != null 
+            ? Integer.parseInt(System.getenv("REDIS_PORT")) 
+            : 6379;
 
     // ── Topic names ───────────────────────────────────────────────────────────
-    private static final String INPUT_TOPIC  = "user-view-events";
+    private static final String INPUT_TOPIC  = System.getenv("KAFKA_TOPIC_USER_VIEW_EVENTS") != null 
+            ? System.getenv("KAFKA_TOPIC_USER_VIEW_EVENTS") 
+            : "user-view-events";
 
     // ── Window ────────────────────────────────────────────────────────────────
     private static final long WINDOW_SIZE_MINUTES = 1;
