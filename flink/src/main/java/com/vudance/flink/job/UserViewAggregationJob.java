@@ -53,7 +53,7 @@ public class UserViewAggregationJob {
     private static final Logger log = LoggerFactory.getLogger(UserViewAggregationJob.class);
 
     // ── Infrastructure addresses ─────────────────────────────────────────────
-    private static final String KAFKA_BOOTSTRAP_SERVERS = "kafka:9092";
+    private static final String KAFKA_BOOTSTRAP_SERVERS = "kafka:29092";
     private static final String MILVUS_HOST             = "18.140.225.1";
     private static final int    MILVUS_PORT             = 19530;
     private static final String REDIS_HOST              = "redis";
