@@ -119,6 +119,27 @@ services:
       timeout: 10s
       retries: 3
 
+  job-submitter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flink-job-submitter
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+    command: >
+      bash -c "
+        echo 'Submitting job...' &&
+        /opt/flink/bin/flink run
+          -m jobmanager:6123
+          /opt/flink/usrlib/flink-job.jar
+      "
+    environment:
+      - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager"
+    networks:
+      - flink-net
+    restart: "no"
+
 volumes:
   flink-logs-jm:
   flink-logs-tm:
