@@ -41,8 +41,11 @@ pipeline {
             steps {
                 dir('flink') {
                     script {
+                        echo '=== Removing old images ==='
+                        sh 'docker compose down'
+                        sh 'docker rmi $(docker images -q *flink*) -f || true'
+                        
                         echo '=== Rebuilding and Starting services ==='
-                        // Thêm --build để đảm bảo nó đọc lại Dockerfile và copy file JAR mới
                         sh 'docker compose up -d --build --remove-orphans'
                         
                         echo '=== Service Status ==='
