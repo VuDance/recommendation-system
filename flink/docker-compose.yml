@@ -76,7 +76,7 @@ services:
       - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager"
       - "JVM_ARGS=-Xmx1536m -Xms1024m"
     volumes:
-      - flink-data:/opt/flink/usrlib
+      # - flink-data:/opt/flink/usrlib
       - ./logs/jobmanager:/opt/flink/log
     depends_on:
       kafka:
