@@ -14,10 +14,11 @@ RUN mvn clean package -DskipTests -q
 FROM flink:1.18-java17
 WORKDIR /opt/flink
 
+RUN mkdir -p /opt/flink/log && \
+    chown -R flink:flink /opt/flink/log /opt/flink/usrlib
 # Copy file JAR từ build_stage sang. 
 # Lưu ý: Kiểm tra chính xác tên file JAR trong thư mục target của container build
 COPY --from=build_stage /app/target/flink-job-1.0-SNAPSHOT.jar /opt/flink/usrlib/flink-job.jar
-
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 USER flink
