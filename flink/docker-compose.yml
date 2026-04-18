@@ -76,9 +76,11 @@ services:
     environment:
       - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager"
       - "JVM_ARGS=-Xmx1536m -Xms1024m"
+    # volumes:
+    #   # - flink-data:/opt/flink/usrlib
+    #   - ./logs/jobmanager:/opt/flink/log
     volumes:
-      # - flink-data:/opt/flink/usrlib
-      - ./logs/jobmanager:/opt/flink/log
+      - flink-logs-jm:/opt/flink/log
     depends_on:
       kafka:
         condition: service_healthy
@@ -105,8 +107,10 @@ services:
     environment:
       - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager\ntaskmanager.numberOfTaskSlots: 4"
       - "JVM_ARGS=-Xmx2048m -Xms1024m"
+    # volumes:
+    #   - ./logs/taskmanager:/opt/flink/log
     volumes:
-      - ./logs/taskmanager:/opt/flink/log
+      - flink-logs-tm:/opt/flink/log
     networks:
       - flink-net
     healthcheck:
@@ -116,6 +120,8 @@ services:
       retries: 3
 
 volumes:
+  flink-logs-jm:
+  flink-logs-tm:
   flink-data:
     driver: local
   redis-data:
