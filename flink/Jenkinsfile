@@ -37,18 +37,6 @@ pipeline {
             }
         }
 
-        stage('Maven Build & Package') {
-            steps {
-                dir('flink') {
-                    script {
-                        sh 'mvn clean package -DskipTests -q'
-                        // Thêm dòng này để kiểm tra file đã tồn tại chưa
-                        sh 'ls -l target/' 
-                    }
-                }
-            }
-        }
-
         stage('Deploy with Docker Compose') {
             steps {
                 dir('flink') {

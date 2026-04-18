@@ -4,6 +4,7 @@
 .gitattributes
 
 # Maven
+target/
 *.class
 *.jar
 *.war
