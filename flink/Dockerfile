@@ -2,8 +2,8 @@ FROM flink:1.18-java17
 
 WORKDIR /opt/flink
 
-# Dùng đường dẫn tương đối từ Build Context (thư mục flink/)
-COPY target/flink-job-*.jar /opt/flink/usrlib/flink-job.jar
+# Chỉ định rõ file JAR để tránh copy nhầm file original
+COPY target/flink-job-1.0-SNAPSHOT.jar /opt/flink/usrlib/flink-job.jar
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 

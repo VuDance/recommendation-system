@@ -53,11 +53,9 @@ pipeline {
             steps {
                 dir('flink') {
                     script {
-                        echo '=== Starting services with Docker Compose ==='
-                        // --build: Đảm bảo build lại nếu có thay đổi trong config
-                        // -d: Chạy ngầm
-                        // --remove-orphans: Xóa các container cũ không còn trong file config
-                        sh 'docker compose up -d --remove-orphans'
+                        echo '=== Rebuilding and Starting services ==='
+                        // Thêm --build để đảm bảo nó đọc lại Dockerfile và copy file JAR mới
+                        sh 'docker compose up -d --build --remove-orphans'
                         
                         echo '=== Service Status ==='
                         sh 'docker compose ps'
