@@ -37,27 +37,18 @@ pipeline {
             }
         }
 
-        stage('Maven Build & Package') {
-            steps {
-                dir('flink') {
-                    script {
-                        echo '=== Building Fat JAR ==='
-                        // Kết hợp clean và package để tối ưu thời gian
-                        sh 'mvn clean package -DskipTests -q'
-                    }
-                }
-            }
-        }
-
         stage('Deploy with Docker Compose') {
             steps {
                 dir('flink') {
                     script {
-                        echo '=== Starting services with Docker Compose ==='
-                        // --build: Đảm bảo build lại nếu có thay đổi trong config
-                        // -d: Chạy ngầm
-                        // --remove-orphans: Xóa các container cũ không còn trong file config
-                        sh 'docker compose up -d --remove-orphans'
+                        echo '=== Removing old containers and images ==='
+                        sh 'docker stop flink-taskmanager flink-jobmanager flink-job-submitter || true'
+                        sh 'docker rm -f flink-taskmanager flink-jobmanager flink-job-submitter || true'
+                        sh 'docker rmi -f $(docker images --format "{{.Repository}}:{{.Tag}}" | grep flink) || true'
+                        sh 'docker compose down --rmi all || true'
+                        
+                        echo '=== Rebuilding and Starting services ==='
+                        sh 'docker compose up -d --build --remove-orphans'
                         
                         echo '=== Service Status ==='
                         sh 'docker compose ps'
