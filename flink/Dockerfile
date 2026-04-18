@@ -15,9 +15,9 @@ FROM flink:1.18-java17
 WORKDIR /opt/flink
 
 USER root
-RUN mkdir -p /opt/flink/log && \
+RUN mkdir -p /opt/flink/log /opt/flink/usrlib && \
     chown -R flink:flink /opt/flink/log /opt/flink/usrlib && \
-    chmod -R 775 /opt/flink/log
+    chmod -R 775 /opt/flink/log /opt/flink/usrlib
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
