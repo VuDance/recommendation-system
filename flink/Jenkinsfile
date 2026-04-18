@@ -41,9 +41,9 @@ pipeline {
             steps {
                 dir('flink') {
                     script {
-                        echo '=== Building Fat JAR ==='
-                        // Kết hợp clean và package để tối ưu thời gian
                         sh 'mvn clean package -DskipTests -q'
+                        // Thêm dòng này để kiểm tra file đã tồn tại chưa
+                        sh 'ls -l target/' 
                     }
                 }
             }
