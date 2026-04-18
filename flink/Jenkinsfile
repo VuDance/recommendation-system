@@ -41,9 +41,11 @@ pipeline {
             steps {
                 dir('flink') {
                     script {
-                        echo '=== Removing old images ==='
-                        sh 'docker compose down'
-                        sh 'docker rmi $(docker images -q *flink*) -f || true'
+                        echo '=== Removing old containers and images ==='
+                        sh 'docker stop flink-taskmanager flink-jobmanager flink-job-submitter || true'
+                        sh 'docker rm -f flink-taskmanager flink-jobmanager flink-job-submitter || true'
+                        sh 'docker rmi -f $(docker images --format "{{.Repository}}:{{.Tag}}" | grep flink) || true'
+                        sh 'docker compose down --rmi all || true'
                         
                         echo '=== Rebuilding and Starting services ==='
                         sh 'docker compose up -d --build --remove-orphans'
