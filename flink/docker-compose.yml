@@ -127,7 +127,7 @@ services:
     depends_on:
       jobmanager:
         condition: service_healthy
-    command: bash -c "echo 'Submitting job...' && /opt/flink/bin/flink run -m jobmanager:6123 /opt/flink/usrlib/flink-job.jar"
+    command: bash -c "echo 'Submitting job...' && /opt/flink/bin/flink run -m jobmanager:8081 /opt/flink/usrlib/flink-job.jar"
     environment:
       - "FLINK_PROPERTIES=jobmanager.rpc.address: jobmanager"
     networks:
