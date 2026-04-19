@@ -32,7 +32,7 @@ public class FlinkJobConfig {
     private final long asyncTimeoutSeconds;
 
     private FlinkJobConfig() {
-        String defaultBootstrapServers = System.getenv("KAFKA_DEFAULT_BOOTSTRAP_SERVERS");
+        String defaultBootstrapServers = System.getenv("KAFKA_EXTERNAL_HOST");
         // Kafka
         this.kafkaBootstrapServers = getEnv("KAFKA_BOOTSTRAP_SERVERS", defaultBootstrapServers);
         this.kafkaTopicUserViewEvents = getEnv("KAFKA_TOPIC_USER_VIEW_EVENTS", "user-view-events");
