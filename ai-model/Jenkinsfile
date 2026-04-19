@@ -17,6 +17,14 @@ pipeline {
             }
         }
 
+        stage('Prepare Env File') {
+            steps {
+                withCredentials([file(credentialsId: 'env-ai-project', variable: 'ENV_FILE')]) {
+                    sh 'cp $ENV_FILE ai-model/.env'
+                }
+            }
+        }
+
         stage('Deploy with Docker Compose') {
             steps {
                 // Chui vào folder chứa docker-compose.yml
@@ -43,6 +51,7 @@ pipeline {
                 echo '=== System Cleanup ==='
                 // Xóa các image cũ, dangling layers để tránh đầy ổ cứng (vấn đề 86% của bạn)
                 sh 'docker image prune -f'
+                sh 'rm -f ai-model/.env'
             }
         }
         success {
