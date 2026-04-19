@@ -73,6 +73,8 @@ pipeline {
                 echo '=== Cleaning up Docker layers ==='
                 // Xóa các image "dangling" (image rác phát sinh khi build đè tag)
                 sh 'docker image prune -f'
+                sh 'rm -f flink/.env'
+
             }
         }
         success {
