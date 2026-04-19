@@ -1,11 +1,13 @@
 package com.vudance.flink.job;
 
+import com.vudance.flink.config.FlinkJobConfig;
 import com.vudance.flink.job.model.UserViewEvent;
 import com.vudance.flink.job.operator.RecommendationEnrichmentOperator;
 import com.vudance.flink.job.model.UserViewProfile;
 import com.vudance.flink.job.serialization.UserViewEventDeserializationSchema;
 import com.vudance.flink.job.sink.RedisRecommendationSink;
 import com.vudance.flink.job.sink.RedisRecommendationSink.UserRecommendation;
+import com.vudance.flink.util.KafkaTopicInitializer;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
@@ -51,45 +53,27 @@ import java.util.concurrent.TimeUnit;
 public class UserViewAggregationJob {
 
     private static final Logger log = LoggerFactory.getLogger(UserViewAggregationJob.class);
-
-    // ── Infrastructure addresses ─────────────────────────────────────────────
-    private static final String KAFKA_BOOTSTRAP_SERVERS = System.getenv("KAFKA_BOOTSTRAP_SERVERS") != null 
-            ? System.getenv("KAFKA_BOOTSTRAP_SERVERS") 
-            : "localhost:9092";
-    private static final String MILVUS_HOST             = System.getenv("MILVUS_HOST") != null 
-            ? System.getenv("MILVUS_HOST") 
-            : "localhost";
-    private static final int    MILVUS_PORT             = System.getenv("MILVUS_PORT") != null 
-            ? Integer.parseInt(System.getenv("MILVUS_PORT")) 
-            : 19530;
-    private static final String REDIS_HOST              = System.getenv("REDIS_HOST") != null 
-            ? System.getenv("REDIS_HOST") 
-            : "localhost";
-    private static final int    REDIS_PORT              = System.getenv("REDIS_PORT") != null 
-            ? Integer.parseInt(System.getenv("REDIS_PORT")) 
-            : 6379;
-
-    // ── Topic names ───────────────────────────────────────────────────────────
-    private static final String INPUT_TOPIC  = System.getenv("KAFKA_TOPIC_USER_VIEW_EVENTS") != null 
-            ? System.getenv("KAFKA_TOPIC_USER_VIEW_EVENTS") 
-            : "user-view-events";
-
-    // ── Window ────────────────────────────────────────────────────────────────
-    private static final long WINDOW_SIZE_MINUTES = 1;
-
-    // ── Async operator config ─────────────────────────────────────────────────
-    private static final int  ASYNC_CAPACITY        = 100; // max in-flight async requests
-    private static final long ASYNC_TIMEOUT_SECONDS = 10;
+    private static final FlinkJobConfig config = FlinkJobConfig.getInstance();
 
     public static void main(String[] args) throws Exception {
+        // ── Initialize Kafka topic if it doesn't exist ─────────────────────
+        log.info("Initializing Kafka topics...");
+        KafkaTopicInitializer.createTopicIfNotExists(
+                config.getKafkaBootstrapServers(),
+                config.getKafkaTopicUserViewEvents(),
+                1,  // 1 partition
+                (short) 1  // replication factor of 1
+        );
+        log.info("Kafka topics initialized successfully");
+
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.enableCheckpointing(5_000L);
         env.setParallelism(2);
 
         // ── Source ───────────────────────────────────────────────────────────
         KafkaSource<UserViewEvent> source = KafkaSource.<UserViewEvent>builder()
-                .setBootstrapServers(KAFKA_BOOTSTRAP_SERVERS)
-                .setTopics(INPUT_TOPIC)
+                .setBootstrapServers(config.getKafkaBootstrapServers())
+                .setTopics(config.getKafkaTopicUserViewEvents())
                 .setGroupId("flink-view-aggregator")
                 .setStartingOffsets(OffsetsInitializer.earliest())
                 .setValueOnlyDeserializer(new UserViewEventDeserializationSchema())
@@ -108,15 +92,15 @@ public class UserViewAggregationJob {
         // ── Async enrich: Milvus vector search ────────────────────────────────
         DataStream<UserRecommendation> recommendations = AsyncDataStream.unorderedWait(
                 profiles,
-                new RecommendationEnrichmentOperator(MILVUS_HOST, MILVUS_PORT),
-                ASYNC_TIMEOUT_SECONDS,
+                new RecommendationEnrichmentOperator(config.getMilvusHost(), config.getMilvusPort()),
+                config.getAsyncTimeoutSeconds(),
                 TimeUnit.SECONDS,
-                ASYNC_CAPACITY
+                config.getAsyncCapacity()
         ).name("Milvus Recommendation Enrichment");
 
         // ── Sink: Redis ───────────────────────────────────────────────────────
         recommendations
-                .addSink(new RedisRecommendationSink(REDIS_HOST, REDIS_PORT))
+                .addSink(new RedisRecommendationSink(config.getRedisHost(), config.getRedisPort()))
                 .name("Redis Recommendation Sink");
 
         // Debug
@@ -159,7 +143,7 @@ public class UserViewAggregationJob {
 
             Long currentWindowEnd = windowEnd.value();
             if (currentWindowEnd == null) {
-                long end = now + Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds();
+                long end = now + Time.minutes(config.getWindowSizeMinutes()).toMilliseconds();
                 windowEnd.update(end);
                 ctx.timerService().registerProcessingTimeTimer(end);
             }
@@ -176,13 +160,13 @@ public class UserViewAggregationJob {
             Map<String, Long> counts = viewCounts.value();
 
             if (counts != null && !counts.isEmpty()) {
-                long start = timestamp - Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds();
+                long start = timestamp - Time.minutes(config.getWindowSizeMinutes()).toMilliseconds();
                 out.collect(new UserViewProfile(ctx.getCurrentKey(), counts, start, timestamp));
                 viewCounts.clear();
             }
 
             // Always schedule next window (even if empty, to keep timer alive)
-            long nextEnd = timestamp + Time.minutes(WINDOW_SIZE_MINUTES).toMilliseconds();
+            long nextEnd = timestamp + Time.minutes(config.getWindowSizeMinutes()).toMilliseconds();
             windowEnd.update(nextEnd);
             ctx.timerService().registerProcessingTimeTimer(nextEnd);
         }
