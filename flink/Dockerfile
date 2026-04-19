@@ -22,6 +22,8 @@ RUN mkdir -p /opt/flink/log /opt/flink/usrlib && \
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Copy file JAR và ép quyền sở hữu cho flink ngay khi copy
+COPY scripts/submit-job.sh /opt/flink/scripts/submit-job.sh
+RUN chmod +x /opt/flink/scripts/submit-job.sh
 COPY --from=build_stage --chown=flink:flink /app/target/flink-job-1.0-SNAPSHOT.jar /opt/flink/usrlib/flink-job.jar
 RUN chmod 644 /opt/flink/usrlib/flink-job.jar
 
