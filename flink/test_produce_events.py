@@ -6,7 +6,7 @@ import json
 import time
 from kafka import KafkaProducer
 
-BOOTSTRAP_SERVERS = ["localhost:9092"]
+BOOTSTRAP_SERVERS = ["18.140.225.1:9092"]
 TOPIC = "user-view-events"
 
 # Real products from ai-model/data/dataset/products_clean.csv
