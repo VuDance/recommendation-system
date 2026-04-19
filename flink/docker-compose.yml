@@ -39,7 +39,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: ${KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR}
       KAFKA_LOG_RETENTION_HOURS: ${KAFKA_LOG_RETENTION_HOURS}
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "29092"]
+      test: ["CMD", "nc", "-z", "18.140.225.1", "9092"]
       interval: 10s
       timeout: 5s
       retries: 5
