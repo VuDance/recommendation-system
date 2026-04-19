@@ -26,6 +26,14 @@ pipeline {
             }
         }
 
+        stage('Prepare Env File') {
+            steps {
+                withCredentials([file(credentialsId: 'env-flink', variable: 'ENV_FILE')]) {
+                    sh 'cp $ENV_FILE flink/.env'
+                }
+            }
+        }
+
         stage('Verify Environment') {
             steps {
                 script {
