@@ -1,7 +1,6 @@
 package com.vudance.recommendation_system.controller;
 
 import com.vudance.recommendation_system.dto.ProductDTO;
-import com.vudance.recommendation_system.dto.RecommendationDTO;
 import com.vudance.recommendation_system.model.Product;
 import com.vudance.recommendation_system.service.ProductService;
 import com.vudance.recommendation_system.service.RedisService;
@@ -12,8 +11,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 
-import org.springdoc.core.converters.models.Pageable;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
