@@ -51,39 +51,11 @@ pipeline {
                     script {
                         echo '=== Building Spring Boot application with Maven ==='
                         sh 'mvn clean package -DskipTests'
-
-                        echo '=== Test Results ==='
-                        sh 'cat target/surefire-reports/*.txt 2>/dev/null || echo "No test report files found"'
-
-                        echo '=== Build artifacts ==='
-                        sh 'ls -la target/'
                     }
                 }
             }
         }
 
-        stage('Archive Artifacts') {
-            steps {
-                dir('back-end') {
-                    script {
-                        echo '=== Archiving build artifacts ==='
-                        // Archive the JAR file
-                        archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: false
-
-                        // Archive test reports if they exist
-                        junit 'target/surefire-reports/*.xml'
-
-                        // Archive logs and other build outputs
-                        sh '''
-                            mkdir -p build-artifacts
-                            cp target/*.jar build-artifacts/ 2>/dev/null || true
-                            cp -r target/surefire-reports build-artifacts/ 2>/dev/null || true
-                        '''
-                        archiveArtifacts artifacts: 'build-artifacts/**', allowEmptyArchive: true
-                    }
-                }
-            }
-        }
 
         stage('Deploy with Docker Compose') {
             steps {
