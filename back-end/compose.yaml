@@ -39,30 +39,37 @@ services:
       - recommendation-network
     depends_on:
       - postgres
-    profiles:
-      - dev  # Only start with docker-compose --profile dev up
 
   # Application
-  # app:
-  #   build: .
-  #   container_name: recommendation-app
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8080:8080"
-  #   environment:
-  #     - SPRING_PROFILES_ACTIVE=docker
-  #     - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/recommendation_db
-  #     - SPRING_DATASOURCE_USERNAME=postgres
-  #     - SPRING_DATASOURCE_PASSWORD=password123
-  #   volumes:
-  #     - ./logs:/app/logs
-  #   networks:
-  #     - recommendation-network
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   profiles:
-  #     - app  # Only start with docker-compose --profile app up
+  app:
+    build: .
+    container_name: recommendation-app
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT}:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SERVER_PORT=${SERVER_PORT}
+      - DB_URL=${DB_URL}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DRIVER=${DB_DRIVER}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_TOPIC_USER_VIEW_EVENTS=${KAFKA_TOPIC_USER_VIEW_EVENTS}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=${JWT_EXPIRATION}
+      - JPA_DDL_AUTO=${JPA_DDL_AUTO}
+      - JPA_SHOW_SQL=${JPA_SHOW_SQL}
+      - JPA_DIALECT=${JPA_DIALECT}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - recommendation-network
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
