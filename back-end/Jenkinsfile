@@ -45,18 +45,6 @@ pipeline {
             }
         }
 
-        stage('Build and Test') {
-            steps {
-                dir('back-end') {
-                    script {
-                        echo '=== Building Spring Boot application with Maven ==='
-                        sh 'mvn clean package -DskipTests'
-                    }
-                }
-            }
-        }
-
-
         stage('Deploy with Docker Compose') {
             steps {
                 dir('back-end') {
