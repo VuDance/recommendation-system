@@ -72,26 +72,18 @@ pipeline {
             steps {
                 dir('back-end') {
                     script {
-                        echo '=== Checking application health ==='
-                        // Wait for application to start
                         sleep 30
-
-                        // Read SERVER_PORT from .env file, default to 8083
-                        sh '''
+                        sh """
                             PORT=8083
                             if [ -f .env ]; then
-                                # Extract SERVER_PORT value using grep and cut, remove quotes and whitespace
-                                EXTRACTED_PORT=$(grep -E "^SERVER_PORT=" .env | cut -d'=' -f2 | sed "s/['\"]//g" | tr -d '[:space:]' || echo "")
-                                if [ ! -z "$EXTRACTED_PORT" ]; then
-                                    PORT=$EXTRACTED_PORT
+                                EXTRACTED_PORT=\$(grep -E '^SERVER_PORT=' .env | cut -d'=' -f2 | tr -d '[:space:]')
+                                if [ -n "\$EXTRACTED_PORT" ]; then
+                                    PORT=\$EXTRACTED_PORT
                                 fi
                             fi
-                            echo "Using port: $PORT for health check"
-
-                            curl -f http://localhost:$PORT/actuator/health || echo "Health check failed"
-                            echo "Application health endpoint response:"
-                            curl -s http://localhost:$PORT/actuator/health || true
-                        '''
+                            echo "Using port: \$PORT"
+                            curl -s http://localhost:\$PORT/actuator/health || echo "Health check failed"
+                        """
                     }
                 }
             }
