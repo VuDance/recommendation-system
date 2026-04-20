@@ -1,0 +1,165 @@
+pipeline {
+    agent any
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '5')) // Keep only last 5 builds
+        timeout(time: 1, unit: 'HOURS')
+        timestamps()
+    }
+
+    environment {
+        JDK_HOME = tool 'Java21'
+        M3_HOME = tool 'Maven3'
+
+        // Set JAVA_HOME directly
+        JAVA_HOME = "${JDK_HOME}"
+
+        // Put Java 21 bin at the BEGINNING of env.PATH
+        PATH = "${JDK_HOME}/bin:${M3_HOME}/bin:${env.PATH}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '=== Pulling source code ==='
+                checkout scm
+            }
+        }
+
+        stage('Prepare Env File') {
+            steps {
+                withCredentials([file(credentialsId: 'env-back-end', variable: 'ENV_FILE')]) {
+                    sh 'cp $ENV_FILE back-end/.env'
+                }
+            }
+        }
+
+        stage('Verify Environment') {
+            steps {
+                script {
+                    // This step is extremely important for debugging
+                    sh 'echo "JAVA_HOME is: $JAVA_HOME"'
+                    sh 'java -version'
+                    sh 'mvn -version'
+                }
+            }
+        }
+
+        stage('Build and Test') {
+            steps {
+                dir('back-end') {
+                    script {
+                        echo '=== Building Spring Boot application with Maven ==='
+                        sh 'mvn clean package'
+
+                        echo '=== Test Results ==='
+                        sh 'cat target/surefire-reports/*.txt 2>/dev/null || echo "No test report files found"'
+
+                        echo '=== Build artifacts ==='
+                        sh 'ls -la target/'
+                    }
+                }
+            }
+        }
+
+        stage('Archive Artifacts') {
+            steps {
+                dir('back-end') {
+                    script {
+                        echo '=== Archiving build artifacts ==='
+                        // Archive the JAR file
+                        archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: false
+
+                        // Archive test reports if they exist
+                        junit 'target/surefire-reports/*.xml'
+
+                        // Archive logs and other build outputs
+                        sh '''
+                            mkdir -p build-artifacts
+                            cp target/*.jar build-artifacts/ 2>/dev/null || true
+                            cp -r target/surefire-reports build-artifacts/ 2>/dev/null || true
+                        '''
+                        archiveArtifacts artifacts: 'build-artifacts/**', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+
+        stage('Deploy with Docker Compose') {
+            steps {
+                dir('back-end') {
+                    script {
+                        echo '=== Removing old containers and images ==='
+                        sh 'docker stop recommendation-app recommendation-postgres recommendation-pgadmin || true'
+                        sh 'docker rm -f recommendation-app recommendation-postgres recommendation-pgadmin || true'
+                        sh 'docker rmi -f $(docker images --format "{{.Repository}}:{{.Tag}}" | grep recommendation) || true'
+                        sh 'docker compose down --rmi all || true'
+
+                        echo '=== Rebuilding and Starting services ==='
+                        sh 'docker compose up -d --build --remove-orphans'
+
+                        echo '=== Service Status ==='
+                        sh 'docker compose ps'
+
+                        echo '=== Application Logs (last 50 lines) ==='
+                        sh 'docker logs --tail 50 recommendation-app || true'
+                    }
+                }
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                dir('back-end') {
+                    script {
+                        echo '=== Checking application health ==='
+                        // Wait for application to start
+                        sleep 30
+
+                        // Read SERVER_PORT from .env file, default to 8083
+                        sh '''
+                            PORT=8083
+                            if [ -f .env ]; then
+                                # Extract SERVER_PORT value using grep and cut, remove quotes and whitespace
+                                EXTRACTED_PORT=$(grep -E "^SERVER_PORT=" .env | cut -d'=' -f2 | sed "s/['\"]//g" | tr -d '[:space:]' || echo "")
+                                if [ ! -z "$EXTRACTED_PORT" ]; then
+                                    PORT=$EXTRACTED_PORT
+                                fi
+                            fi
+                            echo "Using port: $PORT for health check"
+
+                            curl -f http://localhost:$PORT/actuator/health || echo "Health check failed"
+                            echo "Application health endpoint response:"
+                            curl -s http://localhost:$PORT/actuator/health || true
+                        '''
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        always {
+            script {
+                echo '=== Cleaning up Docker layers ==='
+                // Remove "dangling" images (garbage generated when rebuilding tags)
+                sh 'docker image prune -f'
+                sh 'rm -f back-end/.env'
+            }
+        }
+        success {
+            echo '=== DEPLOY SUCCESSFUL ==='
+        }
+        failure {
+            echo '=== DEPLOY FAILED ==='
+        }
+        cleanup {
+            script {
+                echo '=== Clearing Workspace ==='
+                // Clean workspace after completion to free up disk space
+                cleanWs()
+            }
+        }
+    }
+}

@@ -19,7 +19,7 @@ RUN ./mvnw clean package -DskipTests
 RUN mv target/*.jar app.jar
 
 # Expose the port the app runs on
-EXPOSE 8080
+EXPOSE 8083
 
 # Set JVM options for containerized environments
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
