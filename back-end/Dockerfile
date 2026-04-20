@@ -13,7 +13,7 @@ COPY pom.xml .
 COPY src src
 
 # Build the application
-RUN ./mvnw clean package -DskipTests
+RUN mvn clean package -DskipTests -q
 
 # Create a JAR file
 RUN mv target/*.jar app.jar
