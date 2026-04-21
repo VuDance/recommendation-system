@@ -2,9 +2,10 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: calc(100vh - 80px);
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 20px;
+  width: 100vw;
+  height: 100vh;
 }
 
 .register-box {
@@ -22,11 +23,6 @@
   margin-bottom: 30px;
   font-size: 24px;
 }
-
-.form-group {
-  margin-bottom: 20px;
-}
-
 .form-group label {
   display: block;
   margin-bottom: 8px;
@@ -52,16 +48,15 @@
 }
 
 .register-button {
-  width: 100%;
+  grid-column: span 3;
   padding: 12px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 4px;
-  font-size: 16px;
-  font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  font-weight: bold;
+  transition: background 0.3s;
 }
 
 .register-button:hover:not(:disabled) {

@@ -20,7 +20,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
   const title = product.title
   const price =  '$99.99'
   const brand = product.brand || 'Brand'
-  const imageUrl = product.imageURL && product.imageURL.length > 0 ? product.imageURL : [`https://via.placeholder.com/300x300?text=${encodeURIComponent(title)}`]
+  const imageUrl = product.imageURL && product.imageURL.length > 0 ? product.imageURL : [`https://axiomprint.com/icons/default-squre.jpg`]
   const description = product.description || 'No description available.'
 
   return (

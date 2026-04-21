@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+    container_name: recommendation-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    networks:
+      - recommendation-network
+    # Uncomment if you want to connect to backend service in same compose
+    # depends_on:
+    #   - backend
+
+  # Uncomment if you want to include backend service in same compose
+  # backend:
+  #   image: your-backend-image
+  #   container_name: recommendation-backend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   networks:
+  #     - recommendation-network
+  #   environment:
+  #     - SPRING_PROFILES_ACTIVE=docker
+  #   env_file:
+  #     - ../back-end/.env
+
+networks:
+  recommendation-network:
+    driver: bridge
