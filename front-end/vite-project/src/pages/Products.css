@@ -82,9 +82,13 @@
   border-radius: var(--radius-8);
 }
 
+.products {
+  margin-top: var(--space-8);
+}
+
 .products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(4, minmax(300px, 1fr));
   gap: var(--space-6);
 }
 
@@ -92,6 +96,22 @@
   padding: var(--space-10) 0;
   text-align: center;
   color: var(--secondary-text);
+}
+
+.load-more{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.btn{
+  padding: var(--space-3) var(--space-6);
+  background-color: var(--primary-color);
+  border-radius: var(--radius-8);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 200ms ease;
 }
 
 @media (max-width: 640px) {
