@@ -7,16 +7,13 @@ const Products = () => {
   const [page, setPage] = useState(1)
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const fetchProducts = async (page: number) => {
     setLoading(true)
-    setError(null)
     try {
       const data = await getProducts(page, 10)
       setProducts((prevProducts) => [...prevProducts, ...data.content])
     } catch (err) {
-      setError('Failed to fetch products. Please try again.')
       console.error(err)
     } finally {
       setLoading(false)
